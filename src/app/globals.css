@@ -1,0 +1,179 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Nunito Variable", ui-rounded, system-ui, sans-serif;
+
+  --color-ink: #1b2559;
+  --color-ink-soft: #3a4478;
+  --color-slate: #5b6488;
+  --color-mist: #9aa3c2;
+  --color-line: #dbe2f1;
+  --color-paper: #eef3fb;
+  --color-card: #ffffff;
+  --color-sun: #ffc83d;
+  --color-sun-deep: #e0a500;
+  --color-sun-soft: #fff4d1;
+  --color-leaf: #1f9d63;
+  --color-leaf-soft: #e1f6ec;
+  --color-tomato: #e5484d;
+  --color-tomato-soft: #fde8e8;
+  --color-sky: #3d6cf0;
+  --color-sky-soft: #e4ebfe;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01";
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-sky);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* letter tile — the signature element */
+.tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.1rem;
+  height: 2.6rem;
+  padding: 0 0.3rem;
+  border-radius: 0.55rem;
+  font-weight: 800;
+  font-size: 1.35rem;
+  text-transform: lowercase;
+  background: var(--color-card);
+  border: 2px solid var(--color-line);
+  border-bottom-width: 4px;
+  color: var(--color-ink);
+}
+.tile-upper {
+  text-transform: uppercase;
+}
+.tile-filled {
+  background: var(--color-sun-soft);
+  border-color: var(--color-sun-deep);
+}
+.tile-revealed {
+  background: var(--color-sky-soft);
+  border-color: var(--color-sky);
+}
+.tile-ok {
+  background: var(--color-leaf-soft);
+  border-color: var(--color-leaf);
+  color: var(--color-leaf);
+}
+.tile-bad {
+  background: var(--color-tomato-soft);
+  border-color: var(--color-tomato);
+  color: var(--color-tomato);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .anim-pop {
+    animation: pop 220ms ease-out;
+  }
+  .anim-shake {
+    animation: shake 300ms ease-in-out;
+  }
+  .anim-rise {
+    animation: rise 260ms ease-out;
+  }
+  .flip-inner {
+    transition: transform 420ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+}
+
+@keyframes pop {
+  0% { transform: scale(0.94); }
+  60% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.flip-card { perspective: 1200px; }
+.flip-inner { position: relative; transform-style: preserve-3d; }
+.flip-inner.flipped { transform: rotateY(180deg); }
+.flip-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.flip-back { transform: rotateY(180deg); position: absolute; inset: 0; }
+
+.safe-bottom { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+
+/* big letter tile on the child's start screen */
+.letter-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  border-radius: 1.25rem;
+  background: var(--color-card);
+  border: 2px solid var(--color-line);
+  border-bottom-width: 7px;
+  font-weight: 900;
+  transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.letter-tile[aria-pressed="true"] {
+  background: var(--color-sun);
+  border-color: var(--color-sun-deep);
+  border-bottom-width: 2px;
+  transform: translateY(5px);
+}
+.letter-tile:disabled {
+  opacity: 0.45;
+}
+
+/* gap in a phrase: reads as r_ha, not a box */
+.gap {
+  display: inline-block;
+  min-width: 1.05ch;
+  margin: 0 0.06em;
+  border-bottom: 0.14em solid var(--color-sun-deep);
+  line-height: 0.95;
+  text-align: center;
+}
+/* the gap in the retype step stays neutral, so the finished phrase reads as one piece */
+.gap-plain {
+  border-bottom-color: var(--color-mist);
+}
+.gap-ok {
+  border-bottom-color: var(--color-leaf);
+  color: var(--color-leaf);
+}
+.gap-bad {
+  border-bottom-color: var(--color-tomato);
+  color: var(--color-tomato);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .anim-bounce {
+    animation: bounce-in 380ms cubic-bezier(0.2, 1.4, 0.4, 1);
+  }
+  .confetti span {
+    animation: fall 1600ms ease-in forwards;
+  }
+}
+@keyframes bounce-in {
+  from { transform: scale(0.6); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes fall {
+  from { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+  to { transform: translateY(105vh) rotate(540deg); opacity: 0.2; }
+}
