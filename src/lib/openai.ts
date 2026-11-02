@@ -2,6 +2,9 @@
 
 type JsonSchema = Record<string, unknown>;
 
+/** Časť vstupu: text alebo obrázok ako base64. */
+export type Part = { type: "text"; text: string } | { type: "image"; mediaType: string; data: string };
+
 export const aiConfigured = () => !!process.env.OPENAI_API_KEY;
 export const aiModel = () => process.env.OPENAI_MODEL || "gpt-6-sol";
 export const NOT_CONFIGURED = "AI nie je nastavené: vo Verceli chýba kľúč OPENAI_API_KEY.";
@@ -18,7 +21,7 @@ function errorText(status: number, message: string | undefined, model: string) {
 
 export async function structured<T>(opts: {
   system: string;
-  prompt: string;
+  prompt: string | Part[];
   toolName: string;
   description: string;
   schema: JsonSchema;
@@ -34,7 +37,16 @@ export async function structured<T>(opts: {
     body: JSON.stringify({
       model,
       instructions: opts.system,
-      input: [{ role: "user", content: [{ type: "input_text", text: opts.prompt }] }],
+      input: [
+        {
+          role: "user",
+          content: (typeof opts.prompt === "string" ? [{ type: "text" as const, text: opts.prompt }] : opts.prompt).map((c) =>
+            c.type === "text"
+              ? { type: "input_text", text: c.text }
+              : { type: "input_image", image_url: `data:${c.mediaType};base64,${c.data}`, detail: "high" },
+          ),
+        },
+      ],
       tools: [{ type: "function", name: opts.toolName, description: opts.description, parameters: opts.schema, strict: false }],
       tool_choice: { type: "function", name: opts.toolName },
       max_output_tokens: opts.maxTokens ?? 24000,
