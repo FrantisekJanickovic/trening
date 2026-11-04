@@ -1,6 +1,7 @@
 "use client";
 
 import type { ExerciseType, Payload } from "./exercises";
+import type { MindMapData } from "./mindmap";
 import { authHeader } from "./supabase";
 import type { SubjectSlug } from "./types";
 
@@ -38,6 +39,9 @@ export async function toJpegBase64(file: File, max = 2000): Promise<{ data: stri
 
 export const transcribe = (image: { data: string; mediaType: string }, subject: SubjectSlug, grade: number | null) =>
   post<Transcript>("/api/ai/transcribe", { image: image.data, mediaType: image.mediaType, subject, grade });
+
+export const generateMindmap = (input: { subject: SubjectSlug; grade: number | null; title: string; scope: string; sections: Section[]; prompt: string }) =>
+  post<{ map: MindMapData }>("/api/ai/mindmap", input);
 
 export const generateExercises = (input: {
   subject: SubjectSlug;

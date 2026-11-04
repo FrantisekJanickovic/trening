@@ -3,7 +3,7 @@
 import type { SubjectSlug } from "@/data/subjects";
 import type { ExerciseType, Payload } from "./exercises";
 import { supabase } from "./supabase";
-import type { Child, Exercise, Lesson, LessonWithCounts, Notification, Progress, SessionRow, Source, Subject } from "./types";
+import type { Child, Exercise, Lesson, LessonWithCounts, Mindmap, Notification, Progress, SessionRow, Source, Subject } from "./types";
 
 export async function listChildren(): Promise<Child[]> {
   const { data, error } = await supabase().from("children").select("id, name, avatar, grade").order("created_at");
@@ -43,6 +43,23 @@ export async function loadSources(lessonId: string): Promise<Source[]> {
   const { data, error } = await supabase().from("tr_sources").select("*").eq("lesson_id", lessonId).order("position");
   if (error) throw error;
   return (data ?? []) as Source[];
+}
+
+/** Časti materiálu pre viac lekcií naraz — z nich sa berú čísla strán na výber. */
+export async function loadSourcesFor(lessonIds: string[]): Promise<Source[]> {
+  if (!lessonIds.length) return [];
+  const { data, error } = await supabase().from("tr_sources").select("*").in("lesson_id", lessonIds).order("position").limit(2000);
+  if (error) throw error;
+  return (data ?? []) as Source[];
+}
+
+export async function loadMindmaps(lessonIds: string[], onlyActive = false): Promise<Mindmap[]> {
+  if (!lessonIds.length) return [];
+  let q = supabase().from("tr_mindmaps").select("*").in("lesson_id", lessonIds).order("created_at", { ascending: false }).limit(200);
+  if (onlyActive) q = q.eq("active", true);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as Mindmap[];
 }
 
 export async function loadExercises(lessonIds: string[], onlyEnabled = false): Promise<Exercise[]> {

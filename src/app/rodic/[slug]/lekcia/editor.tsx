@@ -13,6 +13,7 @@ import { getLesson, loadExercises, loadSources } from "@/lib/data";
 import { TYPES, preview, solution, typeLabel, type ExerciseType, type Payload } from "@/lib/exercises";
 import { supabase } from "@/lib/supabase";
 import type { Exercise, Lesson, Source, SubjectConfig } from "@/lib/types";
+import Mindmaps from "./mindmaps";
 
 type Queue = { key: string; name: string; state: "waiting" | "reading" | "done" | "error"; note?: string };
 const LAST_GRADE = "trening.lastGrade";
@@ -31,7 +32,7 @@ export default function LessonEditor() {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [config, setConfig] = useState<SubjectConfig>(DEFAULT_CONFIG);
   const [ai, setAi] = useState(true);
-  const [tab, setTab] = useState<"material" | "exercises">("material");
+  const [tab, setTab] = useState<"material" | "exercises" | "maps">("material");
   const [queue, setQueue] = useState<Queue[]>([]);
   const [busy, setBusy] = useState<"save" | "generate" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -277,10 +278,15 @@ export default function LessonEditor() {
         options={[
           { value: "material", label: `Materiál (${sources.length})` },
           { value: "exercises", label: `Cvičenia (${exercises.length})` },
+          ...(lesson ? [{ value: "maps" as const, label: "Myšlienkové mapy" }] : []),
         ]}
       />
 
-      {tab === "material" ? (
+      {tab === "maps" && lesson ? (
+        <Card className="p-4 sm:p-5">
+          <Mindmaps lesson={lesson} sources={sources} slug={slug} ai={ai} />
+        </Card>
+      ) : tab === "material" ? (
         <Card className="p-4 sm:p-5 space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 max-w-prose">

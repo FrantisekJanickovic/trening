@@ -1,7 +1,8 @@
 import type { SubjectSlug } from "@/data/subjects";
 import type { ExerciseType, Payload } from "./exercises";
+import type { MindMapData } from "./mindmap";
 
-export type { SubjectSlug, ExerciseType, Payload };
+export type { SubjectSlug, ExerciseType, Payload, MindMapData };
 
 export type Child = { id: string; name: string; avatar: string; grade: number };
 
@@ -26,6 +27,18 @@ export type Source = {
   heading: string | null;
   text: string;
   position: number;
+};
+
+/** Myšlienková mapa k lekcii; prázdne `pages` znamená celú kapitolu. */
+export type Mindmap = {
+  id: string;
+  lesson_id: string;
+  pages: number[];
+  prompt: string;
+  title: string;
+  data: MindMapData;
+  active: boolean;
+  created_at: string;
 };
 
 export type Exercise = {
