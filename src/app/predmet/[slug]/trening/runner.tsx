@@ -8,8 +8,9 @@ import { Button, Card, ErrorNote, Spinner, cx } from "@/components/ui";
 import { subjectDef, type SubjectSlug } from "@/data/subjects";
 import { cheer } from "@/lib/cheer";
 import { loadConfig } from "@/lib/config";
-import { getChild, loadExercises, loadProgress } from "@/lib/data";
+import { getChild, loadExercises, loadProgress, loadSourcesFor } from "@/lib/data";
 import { explainOf, isCorrect, preview, solution, typeLabel, type Answer } from "@/lib/exercises";
+import { decodePages, filterByPages } from "@/lib/pages";
 import { buildPlan, COUNTS } from "@/lib/plan";
 import { progressUpdates, type Tally } from "@/lib/progress";
 import { playAnswer } from "@/lib/sounds";
@@ -26,20 +27,23 @@ export default function Runner() {
   const lessons = (params.get("lessons") ?? "").split(",").filter(Boolean);
   const count = COUNTS.includes(Number(params.get("count"))) ? Number(params.get("count")) : 15;
   const mode = params.get("mode") === "focus" ? "focus" : "normal";
-  const sig = `${childId}|${lessons.join(",")}|${count}|${mode}|${params.get("t") ?? ""}`;
-  return <Session key={sig} slug={slug} childId={childId} lessonIds={lessons} count={count} mode={mode} />;
+  const pages = params.get("pages") ?? "";
+  const sig = `${childId}|${lessons.join(",")}|${pages}|${count}|${mode}|${params.get("t") ?? ""}`;
+  return <Session key={sig} slug={slug} childId={childId} lessonIds={lessons} pages={pages} count={count} mode={mode} />;
 }
 
 function Session({
   slug,
   childId,
   lessonIds,
+  pages,
   count,
   mode,
 }: {
   slug: SubjectSlug;
   childId: string;
   lessonIds: string[];
+  pages: string;
   count: number;
   mode: "normal" | "focus";
 }) {
@@ -55,21 +59,22 @@ function Session({
     let off = false;
     (async () => {
       const ids = key.split(",").filter(Boolean);
-      const [child, config, exercises] = await Promise.all([getChild(childId), loadConfig(slug), loadExercises(ids, true)]);
+      const [child, config, exercises, sources] = await Promise.all([getChild(childId), loadConfig(slug), loadExercises(ids, true), loadSourcesFor(ids)]);
       if (!child) throw new Error("Profil sa nenašiel.");
-      const allowed = exercises.filter((e) => config.types[e.type]);
+      const inScope = filterByPages(exercises, sources, decodePages(pages, ids));
+      const allowed = inScope.filter((e) => config.types[e.type]);
       const progress = await loadProgress(
         childId,
         allowed.map((e) => e.id),
       );
       const plan = buildPlan({ exercises: allowed, progress, count, focus: mode === "focus" });
-      if (!plan.length) throw new Error(mode === "focus" ? "Nemáš žiadne chyby na opakovanie." : "Pre tieto lekcie zatiaľ nie sú cvičenia.");
+      if (!plan.length) throw new Error(mode === "focus" ? "Nemáš žiadne chyby na opakovanie." : "Pre vybrané strany zatiaľ nie sú cvičenia.");
       if (!off) setData({ child, config, plan, progress, lessonIds: ids });
     })().catch((e) => setError(e instanceof Error ? e.message : "Tréning sa nepodarilo pripraviť."));
     return () => {
       off = true;
     };
-  }, [slug, childId, key, count, mode, run]);
+  }, [slug, childId, key, pages, count, mode, run]);
 
   if (error)
     return (

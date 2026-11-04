@@ -1,15 +1,18 @@
 "use client";
 
-import { ArrowLeft, ChartNoAxesColumn, Target } from "lucide-react";
+import { ArrowLeft, ChartNoAxesColumn, Network, Target } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { MapDownloads } from "@/components/mindmap-view";
+import { PagePicker } from "@/components/pages-picker";
 import { Button, Card, Spinner, cx } from "@/components/ui";
 import { subjectDef, type SubjectSlug } from "@/data/subjects";
 import { loadConfig } from "@/lib/config";
-import { getChild, loadExercises, loadLessons, loadProgress } from "@/lib/data";
+import { getChild, loadExercises, loadLessons, loadMindmaps, loadProgress, loadSourcesFor } from "@/lib/data";
+import { describePages, encodePages, filterByPages, pagesOf, type Selection } from "@/lib/pages";
 import { COUNTS } from "@/lib/plan";
-import type { Child, Exercise, LessonWithCounts, Progress } from "@/lib/types";
+import type { Child, Exercise, LessonWithCounts, Mindmap, Progress, Source } from "@/lib/types";
 
 const key = (child: string, subject: string) => `trening.setup.${subject}.${child}`;
 
@@ -22,7 +25,10 @@ export default function LessonPicker() {
   const [lessons, setLessons] = useState<LessonWithCounts[] | null>(null);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [progress, setProgress] = useState<Progress[]>([]);
+  const [sources, setSources] = useState<Source[]>([]);
+  const [maps, setMaps] = useState<Mindmap[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
+  const [pageSel, setPageSel] = useState<Selection>({});
   const [count, setCount] = useState(15);
 
   useEffect(() => {
@@ -32,11 +38,11 @@ export default function LessonPicker() {
       const ready = ls.filter((l) => l.exercises > 0);
       setLessons(ready);
       void cfg;
-      const ex = await loadExercises(
-        ready.map((l) => l.id),
-        true,
-      );
+      const ids = ready.map((l) => l.id);
+      const [ex, src, mm] = await Promise.all([loadExercises(ids, true), loadSourcesFor(ids), loadMindmaps(ids, true)]);
       setExercises(ex);
+      setSources(src);
+      setMaps(mm);
       setProgress(
         await loadProgress(
           childId,
@@ -45,8 +51,8 @@ export default function LessonPicker() {
       );
       try {
         const saved = JSON.parse(localStorage.getItem(key(childId, slug)) ?? "{}");
-        const ids = Array.isArray(saved.lessons) ? saved.lessons.filter((id: string) => ready.some((l) => l.id === id)) : [];
-        setPicked(ids.length ? ids : ready.length === 1 ? [ready[0].id] : []);
+        const kept = Array.isArray(saved.lessons) ? saved.lessons.filter((id: string) => ready.some((l) => l.id === id)) : [];
+        setPicked(kept.length ? kept : ready.length === 1 ? [ready[0].id] : []);
         if (COUNTS.includes(saved.count)) setCount(saved.count);
       } catch {
         if (ready.length === 1) setPicked([ready[0].id]);
@@ -54,13 +60,18 @@ export default function LessonPicker() {
     })().catch(() => setLessons([]));
   }, [slug, childId]);
 
+  /** Cvičenia zúžené na vybrané lekcie aj vybrané strany. */
+  const inScope = useMemo(
+    () => filterByPages(exercises.filter((e) => picked.includes(e.lesson_id)), sources, pageSel),
+    [exercises, sources, picked, pageSel],
+  );
+
   const open = useMemo(() => {
     const ids = new Set(progress.filter((p) => !p.mastered && p.wrong_count > 0).map((p) => p.exercise_id));
-    const inPicked = exercises.filter((e) => ids.has(e.id) && (picked.length === 0 || picked.includes(e.lesson_id)));
-    return inPicked.length;
-  }, [progress, exercises, picked]);
+    return inScope.filter((e) => ids.has(e.id)).length;
+  }, [progress, inScope]);
 
-  const available = exercises.filter((e) => picked.includes(e.lesson_id)).length;
+  const available = inScope.length;
 
   if (child === undefined || !lessons) return <Spinner />;
   if (!child)
@@ -80,8 +91,11 @@ export default function LessonPicker() {
       localStorage.setItem(key(childId, slug), JSON.stringify({ lessons: picked, count }));
     } catch {}
     const t = Date.now().toString(36);
-    router.push(`/predmet/${slug}/trening?child=${childId}&lessons=${picked.join(",")}&count=${count}&mode=${mode}&t=${t}`);
+    const pages = encodePages(picked, pageSel, sources);
+    router.push(`/predmet/${slug}/trening?child=${childId}&lessons=${picked.join(",")}&pages=${pages}&count=${count}&mode=${mode}&t=${t}`);
   }
+
+  const activeMaps = maps.filter((m) => lessons.some((l) => l.id === m.lesson_id));
 
   const byGrade = [...new Set(lessons.map((l) => l.grade ?? 0))].sort((a, b) => a - b);
 
@@ -121,30 +135,46 @@ export default function LessonPicker() {
                     .filter((l) => (l.grade ?? 0) === g)
                     .map((l) => {
                       const on = picked.includes(l.id);
+                      const lessonPages = pagesOf(sources, l.id);
                       return (
-                        <button
+                        <div
                           key={l.id}
-                          type="button"
-                          aria-pressed={on}
-                          onClick={() => toggle(l.id)}
-                          className={cx(
-                            "w-full flex items-center gap-3 rounded-2xl border-2 border-b-[5px] px-4 py-3 text-left transition",
-                            on ? "bg-sun-soft border-sun-deep" : "bg-card border-line",
-                          )}
+                          className={cx("rounded-2xl border-2 border-b-[5px] transition", on ? "bg-sun-soft border-sun-deep" : "bg-card border-line")}
                         >
-                          <span
-                            className={cx(
-                              "size-6 shrink-0 rounded-lg border-2 flex items-center justify-center text-xs font-black",
-                              on ? "bg-ink border-ink text-white" : "border-line",
-                            )}
+                          <button
+                            type="button"
+                            aria-pressed={on}
+                            onClick={() => toggle(l.id)}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-left"
                           >
-                            {on ? "✓" : ""}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block font-black truncate">{l.title}</span>
-                            <span className="block text-sm text-slate font-semibold">{l.exercises} cvičení</span>
-                          </span>
-                        </button>
+                            <span
+                              className={cx(
+                                "size-6 shrink-0 rounded-lg border-2 flex items-center justify-center text-xs font-black",
+                                on ? "bg-ink border-ink text-white" : "border-line",
+                              )}
+                            >
+                              {on ? "✓" : ""}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-black truncate">{l.title}</span>
+                              <span className="block text-sm text-slate font-semibold">
+                                {l.exercises} cvičení
+                                {lessonPages.length > 1 ? ` · ${lessonPages.length} strán` : ""}
+                              </span>
+                            </span>
+                          </button>
+                          {on && lessonPages.length > 1 && (
+                            <div className="px-4 pb-3 -mt-1 border-t border-sun-deep/30 pt-2.5">
+                              <PagePicker
+                                pages={lessonPages}
+                                value={pageSel[l.id] ?? []}
+                                onChange={(next) => setPageSel((cur) => ({ ...cur, [l.id]: next }))}
+                                idPrefix={`l-${l.id}`}
+                                label="Z ktorých strán"
+                              />
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                 </div>
@@ -169,9 +199,32 @@ export default function LessonPicker() {
               ))}
             </select>
             {picked.length > 0 && available < count && (
-              <p className="text-sm text-slate font-semibold mt-2">Pre vybrané lekcie je pripravených {available} cvičení, tréning ich bude mať toľko.</p>
+              <p className="text-sm text-slate font-semibold mt-2">Pre tento výber je pripravených {available} cvičení, tréning ich bude mať toľko.</p>
             )}
           </section>
+
+          {activeMaps.length > 0 && (
+            <section className="mt-8">
+              <h2 className="text-xl font-black flex items-center gap-2">
+                <Network className="size-5 text-sky" /> Myšlienkové mapy
+              </h2>
+              <p className="text-sm text-slate font-semibold mt-1">Stiahni si ich a vytlač — dobre sa z nich opakuje pred skúšaním.</p>
+              <div className="space-y-2 mt-3">
+                {activeMaps.map((m) => {
+                  const lesson = lessons.find((l) => l.id === m.lesson_id);
+                  const total = pagesOf(sources, m.lesson_id).length;
+                  const caption = `${lesson?.title ?? ""} · ${describePages(m.pages, total)}`;
+                  return (
+                    <Card key={m.id} className="p-3">
+                      <p className="font-black truncate">{m.title}</p>
+                      <p className="text-sm text-slate font-semibold mb-2 truncate">{caption}</p>
+                      <MapDownloads data={m.data} caption={caption} name={`${lesson?.title ?? "mapa"}-${m.title}`} size="md" />
+                    </Card>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           <div className="fixed inset-x-0 bottom-0 z-10 bg-gradient-to-t from-paper via-paper to-transparent pt-6 safe-bottom">
             <div className="max-w-xl mx-auto px-4 space-y-2">
