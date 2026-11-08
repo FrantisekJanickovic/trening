@@ -9,7 +9,7 @@ export async function GET(req: Request) {
   return Response.json({ ai: aiConfigured(), model: aiConfigured() ? aiModel() : null });
 }
 
-type Raw = { title?: unknown; sections?: { heading?: unknown; text?: unknown }[]; figures?: unknown };
+type Raw = { title?: unknown; sections?: { heading?: unknown; text?: unknown }[]; figures?: unknown; rotation?: unknown };
 
 /** Obrázok nájdený na strane: kde je, čo k nemu píše kniha a vysvetlenie navyše. */
 export type FigureOut = { box: [number, number, number, number]; caption: string; explain: string };
@@ -29,6 +29,10 @@ const SCHEMA = {
         required: ["heading", "text"],
       },
     },
+    rotation: {
+      type: "integer",
+      description: "o koľko stupňov v smere hodinových ručičiek treba stranu otočiť, aby bol text rovno: 0, 90, 180 alebo 270",
+    },
     figures: {
       type: "array",
       description: "obrázky, mapy, schémy a tabuľky na strane; prázdne, keď tam žiadne nie sú",
@@ -47,7 +51,7 @@ const SCHEMA = {
       },
     },
   },
-  required: ["title", "sections", "figures"],
+  required: ["title", "sections", "figures", "rotation"],
 };
 
 const system = (subject: string, grade: number | null) => {
@@ -63,6 +67,8 @@ Pravidlá:
 - Popisky obrázkov a máp prepíš tiež, do vlastnej časti, a pred text dopíš „Obrázok: “.
 - Vynechaj čísla strán, hlavičky, pätky a otázky na opakovanie bez odpovedí.
 - Ak je strana nečitateľná, vráť prázdny zoznam častí.
+
+Strana môže byť odfotená otočená, aj hore nohami. Prečítaj ju aj tak a do "rotation" napíš, o koľko stupňov v smere hodinových ručičiek ju treba otočiť, aby bol text rovno: 0, 90, 180 alebo 270. Keď je rovno, napíš 0.
 
 Okrem textu nájdi na strane obrázky, mapy, schémy a tabuľky a pre každý vráť položku vo "figures":
 - "box" je orámovanie obrázka v podieloch strany: [vľavo, hore, vpravo, dole], kde 0 je ľavý horný roh a 1 pravý dolný. Rámuj celý obrázok aj s popisom pod ním, radšej o kúsok širšie než tesne.
@@ -123,7 +129,11 @@ export async function POST(req: Request) {
       });
     }
 
+    const rot = Number(raw.rotation);
+    const rotation = [0, 90, 180, 270].includes(rot) ? rot : 0;
+
     return Response.json({
+      rotation,
       title: String(raw.title ?? "")
         .trim()
         .slice(0, 160),

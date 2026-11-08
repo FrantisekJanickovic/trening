@@ -8,7 +8,7 @@ export const BUCKET = "lekcie";
 /** Čo AI našla na strane: rámček v podieloch strany a texty k nemu. */
 export type FoundFigure = { box: [number, number, number, number]; caption: string; explain: string };
 
-const loadImage = (file: File) =>
+const loadImage = (file: Blob) =>
   new Promise<HTMLImageElement>((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -31,7 +31,7 @@ const toBlob = (canvas: HTMLCanvasElement) =>
  * Rámček od AI trochu rozšírime — radšej kúsok okolia navyše než odseknutý okraj —
  * a výrez zmenšíme na rozumnú šírku, nech galéria nenaťahuje megabajty.
  */
-export async function cropFigures(file: File, found: FoundFigure[], maxWidth = 1100): Promise<{ blob: Blob; caption: string; explain: string }[]> {
+export async function cropFigures(file: Blob, found: FoundFigure[], maxWidth = 1100): Promise<{ blob: Blob; caption: string; explain: string }[]> {
   if (!found.length) return [];
   const img = await loadImage(file);
   const canvas = document.createElement("canvas");

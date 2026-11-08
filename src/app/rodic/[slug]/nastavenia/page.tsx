@@ -4,10 +4,10 @@ import { ArrowLeft, Check } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Button, Card, ErrorNote, Spinner, Toggle } from "@/components/ui";
-import { subjectDef, type SubjectSlug } from "@/data/subjects";
+import { Button, Card, ErrorNote, Segmented, Spinner, Toggle } from "@/components/ui";
+import { isVerbSubject, subjectDef, type SubjectSlug } from "@/data/subjects";
 import { DEFAULT_CONFIG, LIMITS, loadConfig, saveConfig } from "@/lib/config";
-import { ASPECTS, TYPES } from "@/lib/exercises";
+import { TYPES, YEARS_MODES, yearsModeDef } from "@/lib/exercises";
 import type { SubjectConfig } from "@/lib/types";
 
 function NumberBox({ value, onChange, limits, label }: { value: number; onChange: (n: number) => void; limits: readonly [number, number]; label: string }) {
@@ -40,16 +40,15 @@ export default function SubjectSettings() {
   }, [slug]);
 
   if (!cfg) return <Spinner />;
+  // slovesá sa negenerujú ani neobsahujú letopočty — tie nastavenia by boli mŕtve
+  const verbs = isVerbSubject(slug);
   const set = <K extends keyof SubjectConfig>(k: K, v: SubjectConfig[K]) => {
     setCfg({ ...cfg, [k]: v });
     setSaved(false);
   };
   const anyType = Object.values(cfg.types).some(Boolean);
-  const anyAspect = Object.values(cfg.aspects).some(Boolean);
-  const invalid =
-    !anyType ||
-    !anyAspect ||
-    (["generateCount", "masteryStreak", "lowScore"] as const).some((k) => !Number.isInteger(cfg[k]) || cfg[k] < LIMITS[k][0] || cfg[k] > LIMITS[k][1]);
+  const nums = verbs ? (["lowScore"] as const) : (["generateCount", "masteryStreak", "lowScore"] as const);
+  const invalid = (!anyType && !verbs) || nums.some((k) => !Number.isInteger(cfg[k]) || cfg[k] < LIMITS[k][0] || cfg[k] > LIMITS[k][1]);
 
   async function save() {
     if (!cfg) return;
@@ -73,55 +72,64 @@ export default function SubjectSettings() {
       </Link>
       <h1 className="text-2xl font-black">Nastavenia predmetu {def?.name}</h1>
 
-      <Card className="p-5 sm:p-6 space-y-4">
-        <div>
-          <h2 className="text-lg font-black">Typy cvičení</h2>
-          <p className="text-sm text-slate mt-0.5">Vypnutý typ sa negeneruje ani neobjaví v tréningu.</p>
-        </div>
-        {TYPES.map((t) => (
-          <Toggle key={t.key} checked={cfg.types[t.key]} onChange={(v) => set("types", { ...cfg.types, [t.key]: v })} label={t.label} description={t.help} />
-        ))}
-        {!anyType && <ErrorNote>Aspoň jeden typ musí byť zapnutý.</ErrorNote>}
-      </Card>
-
-      <Card className="p-5 sm:p-6 space-y-4">
-        <div>
-          <h2 className="text-lg font-black">Čo sa skúša</h2>
-          <p className="text-sm text-slate mt-0.5">
-            Keď učiteľ niečo neskúša — najčastejšie letopočty — vypni to tu. Cvičenia ostanú uložené, len sa do tréningu nedostanú a dieťa
-            dostane oznam, že sa to učiť nemusí.
+      {verbs && (
+        <Card className="p-5 sm:p-6">
+          <h2 className="text-lg font-black">Čo si volí dieťa</h2>
+          <p className="text-sm text-slate mt-1">
+            Pri slovesách si rozsah, smer prekladu, spôsob odpovedania aj počet otázok navolí dieťa pred štartom. Tu sa nastavuje len priebeh tréningu.
           </p>
-        </div>
-        {ASPECTS.map((a) => (
-          <Toggle
-            key={a.key}
-            checked={cfg.aspects[a.key]}
-            onChange={(v) => set("aspects", { ...cfg.aspects, [a.key]: v })}
-            label={a.label}
-            description={a.hint}
-          />
-        ))}
-        {!anyAspect && <ErrorNote>Aspoň jedna časť učiva musí ostať zapnutá, inak nebude z čoho skúšať.</ErrorNote>}
-      </Card>
+        </Card>
+      )}
+
+      {!verbs && (
+        <Card className="p-5 sm:p-6 space-y-4">
+          <div>
+            <h2 className="text-lg font-black">Typy cvičení</h2>
+            <p className="text-sm text-slate mt-0.5">Vypnutý typ sa negeneruje ani neobjaví v tréningu.</p>
+          </div>
+          {TYPES.map((t) => (
+            <Toggle key={t.key} checked={cfg.types[t.key]} onChange={(v) => set("types", { ...cfg.types, [t.key]: v })} label={t.label} description={t.help} />
+          ))}
+          {!anyType && <ErrorNote>Aspoň jeden typ musí byť zapnutý.</ErrorNote>}
+        </Card>
+      )}
+
+      {!verbs && (
+        <Card className="p-5 sm:p-6 space-y-4">
+          <div>
+            <h2 className="text-lg font-black">Letopočty</h2>
+            <p className="text-sm text-slate mt-0.5">
+              Keď učiteľ letopočty neskúša, vynechaj ich. Keď sa ich dieťa potrebuje dobiť, nechaj len ich. Cvičenia ostanú uložené tak či tak a dieťa dostane
+              na obrazovke oznam, čo ho čaká.
+            </p>
+          </div>
+          <Segmented value={cfg.years} onChange={(v) => set("years", v)} options={YEARS_MODES.map((m) => ({ value: m.value, label: m.label }))} />
+          <p className="text-sm font-semibold text-slate">{yearsModeDef(cfg.years).hint}</p>
+        </Card>
+      )}
 
       <Card className="p-5 sm:p-6 space-y-5">
         <h2 className="text-lg font-black">Tréning</h2>
-        <div className={row}>
-          <span className="font-bold text-ink">Z jedného materiálu vyrobiť</span>
-          <NumberBox value={cfg.generateCount} onChange={(n) => set("generateCount", n)} limits={LIMITS.generateCount} label="Počet cvičení na generovanie" />
-          <span>cvičení.</span>
-        </div>
-        <div className={row}>
-          <span className="font-bold text-ink">Cvičenie je zvládnuté</span>
-          <span>po</span>
-          <NumberBox
-            value={cfg.masteryStreak}
-            onChange={(n) => set("masteryStreak", n)}
-            limits={LIMITS.masteryStreak}
-            label="Počet správnych odpovedí na zvládnutie"
-          />
-          <span>správnych odpovediach za sebou.</span>
-        </div>
+        {!verbs && (
+          <div className={row}>
+            <span className="font-bold text-ink">Z jedného materiálu vyrobiť</span>
+            <NumberBox value={cfg.generateCount} onChange={(n) => set("generateCount", n)} limits={LIMITS.generateCount} label="Počet cvičení na generovanie" />
+            <span>cvičení.</span>
+          </div>
+        )}
+        {!verbs && (
+          <div className={row}>
+            <span className="font-bold text-ink">Cvičenie je zvládnuté</span>
+            <span>po</span>
+            <NumberBox
+              value={cfg.masteryStreak}
+              onChange={(n) => set("masteryStreak", n)}
+              limits={LIMITS.masteryStreak}
+              label="Počet správnych odpovedí na zvládnutie"
+            />
+            <span>správnych odpovediach za sebou.</span>
+          </div>
+        )}
         <Toggle checked={cfg.encouragement} onChange={(v) => set("encouragement", v)} label="Povzbudzovanie počas tréningu" />
         <Toggle checked={cfg.sounds} onChange={(v) => set("sounds", v)} label="Tiché zvuky pri odpovedi" />
         <Toggle

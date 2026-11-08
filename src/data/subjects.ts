@@ -2,7 +2,7 @@
  * Predmety. Pridať ďalší predmet znamená pridať sem položku a riadok do tabuľky tr_subjects;
  * engine (import, generovanie, tréning, chyby, história) ostáva nezmenený.
  */
-export type SubjectSlug = "dejepis" | "geografia" | "chemia" | "biologia" | "vlastiveda";
+export type SubjectSlug = "dejepis" | "geografia" | "chemia" | "biologia" | "vlastiveda" | "slovesa";
 
 export type SubjectDef = {
   slug: SubjectSlug;
@@ -10,6 +10,11 @@ export type SubjectDef = {
   icon: string;
   /** what the AI should pay attention to in this subject */
   hint: string;
+  /**
+   * "lessons" je bežný predmet: nafotené lekcie a cvičenia z nich.
+   * "verbs" je očíslovaný zoznam slovies s vlastnou správou aj tréningom.
+   */
+  kind?: "lessons" | "verbs";
 };
 
 export const SUBJECTS: SubjectDef[] = [
@@ -43,8 +48,16 @@ export const SUBJECTS: SubjectDef[] = [
     icon: "🧭",
     hint: "Učivo mieša poznatky o Slovensku, prírode a dejinách pre mladšie deti. Dôležité sú kraje, mestá, rieky a pohoria, významné osobnosti a povesti, tradície a sviatky, orientácia v krajine a na mape, svetové strany. Otázky stavaj z toho, čo dieťa pozná zo svojho okolia, a jazyk drž jednoduchý.",
   },
+  {
+    slug: "slovesa",
+    name: "Nepravidelné slovesá",
+    icon: "🔤",
+    kind: "verbs",
+    hint: "Anglické nepravidelné slovesá: základný tvar, minulý čas, minulé príčastie a slovenský význam.",
+  },
 ];
 
 export const subjectDef = (slug: string) => SUBJECTS.find((s) => s.slug === slug);
+export const isVerbSubject = (slug: string) => subjectDef(slug)?.kind === "verbs";
 export const GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 export const gradeLabel = (g: number) => `${g}. trieda`;
