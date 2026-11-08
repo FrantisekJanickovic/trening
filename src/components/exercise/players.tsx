@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Button, Card, cx } from "@/components/ui";
 import {
   GAP,
@@ -126,87 +126,104 @@ function TrueFalse({ payload, done, onSubmit }: PlayerProps) {
   );
 }
 
+/**
+ * Spájanie dvojíc. Uhádnutá dvojica zmizne z hracej plochy a presunie sa dole,
+ * kde si ju žiak môže prečítať — plocha sa tým postupne vyprázdňuje a ostáva
+ * na nej len to, čo ešte treba vyriešiť.
+ *
+ * Hodnotí sa prvý pokus pri každej položke, nie konečný stav: inak by sa dalo
+ * k správnej odpovedi doklikať skúšaním.
+ */
 function Pairs({ payload, done, onSubmit }: PlayerProps) {
   const p = payload as PairsPayload;
-  const [right] = useState(() => shuffle(p.pairs.map((_, i) => i)));
+  const [rightOrder] = useState(() => shuffle(p.pairs.map((_, i) => i)));
   const [left, setLeft] = useState<number | null>(null);
-  const [matched, setMatched] = useState<[number, number][]>([]);
-  const takenLeft = new Set(matched.map((m) => m[0]));
-  const takenRight = new Set(matched.map((m) => m[1]));
+  const [solved, setSolved] = useState<number[]>([]);
+  const [firstTry, setFirstTry] = useState<Record<number, number>>({});
+  const [miss, setMiss] = useState<{ l: number; r: number } | null>(null);
+
+  const openLeft = p.pairs.map((_, i) => i).filter((i) => !solved.includes(i));
+  const openRight = rightOrder.filter((r) => !solved.includes(r));
 
   function pickRight(r: number) {
-    if (done || left === null || takenRight.has(r)) return;
-    const next: [number, number][] = [...matched, [left, r]];
-    setMatched(next);
-    setLeft(null);
-    if (next.length === p.pairs.length) onSubmit({ type: "pairs", matched: next });
+    if (done || left === null || miss) return;
+    const tries = left in firstTry ? firstTry : { ...firstTry, [left]: r };
+    setFirstTry(tries);
+
+    if (r === left) {
+      const next = [...solved, left];
+      setSolved(next);
+      setLeft(null);
+      if (next.length === p.pairs.length) {
+        onSubmit({ type: "pairs", matched: p.pairs.map((_, i) => [i, tries[i] ?? i] as [number, number]) });
+      }
+      return;
+    }
+    // zlá dvojica: na chvíľu sa červeno ukáže a plocha sa vráti do pôvodného stavu
+    setMiss({ l: left, r });
+    setTimeout(() => {
+      setMiss(null);
+      setLeft(null);
+    }, 700);
   }
+
+  const cell = "px-3 py-3 text-base h-full flex items-center justify-center text-center leading-snug";
 
   return (
     <div className="space-y-4">
       <p className="text-center text-base font-bold text-slate">{p.prompt ?? "Spoj, čo patrí k sebe"}</p>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          {p.pairs.map((pair, i) => {
-            const m = matched.find((x) => x[0] === i);
-            const ok = done && m && m[1] === i;
-            const bad = done && m && m[1] !== i;
+
+      {openLeft.length > 0 && (
+        // jedna mriežka pre oba stĺpce: bunky v rovnakom riadku sú tým pádom
+        // rovnako vysoké aj vtedy, keď sa text na jednej strane zalomí
+        <div className="grid grid-cols-2 gap-3 items-stretch">
+          {openLeft.map((i, row) => {
+            const r = openRight[row];
             return (
-              <button
-                key={i}
-                type="button"
-                disabled={done || takenLeft.has(i)}
-                aria-pressed={left === i}
-                onClick={() => setLeft(i)}
-                className={cx(
-                  tile,
-                  "w-full px-3 py-3 text-base",
-                  ok
-                    ? "bg-leaf-soft border-leaf text-leaf"
-                    : bad
-                      ? "bg-tomato-soft border-tomato text-tomato"
-                      : left === i
-                        ? "bg-sky-soft border-sky"
-                        : takenLeft.has(i)
-                          ? "bg-paper border-line text-mist"
-                          : "bg-card border-line",
-                )}
-              >
-                {pair.left}
-              </button>
+              <Fragment key={i}>
+                <button
+                  type="button"
+                  disabled={done || !!miss}
+                  aria-pressed={left === i}
+                  onClick={() => setLeft(i)}
+                  className={cx(tile, cell, miss?.l === i ? "bg-tomato-soft border-tomato text-tomato" : left === i ? "bg-sky-soft border-sky" : "bg-card border-line")}
+                >
+                  {p.pairs[i].left}
+                </button>
+                <button
+                  type="button"
+                  disabled={done || !!miss || left === null}
+                  onClick={() => pickRight(r)}
+                  className={cx(
+                    tile,
+                    cell,
+                    miss?.r === r ? "bg-tomato-soft border-tomato text-tomato" : left === null ? "bg-card border-line opacity-60" : "bg-card border-line",
+                  )}
+                >
+                  {p.pairs[r].right}
+                </button>
+              </Fragment>
             );
           })}
         </div>
-        <div className="space-y-2">
-          {right.map((r) => {
-            const m = matched.find((x) => x[1] === r);
-            const ok = done && m && m[0] === r;
-            const bad = done && m && m[0] !== r;
-            return (
-              <button
-                key={r}
-                type="button"
-                disabled={done || takenRight.has(r)}
-                onClick={() => pickRight(r)}
-                className={cx(
-                  tile,
-                  "w-full px-3 py-3 text-base",
-                  ok
-                    ? "bg-leaf-soft border-leaf text-leaf"
-                    : bad
-                      ? "bg-tomato-soft border-tomato text-tomato"
-                      : takenRight.has(r)
-                        ? "bg-paper border-line text-mist"
-                        : "bg-card border-line",
-                )}
-              >
-                {p.pairs[r].right}
-              </button>
-            );
-          })}
+      )}
+
+      {solved.length > 0 && (
+        <div className="rounded-2xl bg-leaf-soft/50 border border-leaf/30 p-3">
+          <p className="text-sm font-black text-leaf mb-2">Spojené ({solved.length} z {p.pairs.length})</p>
+          <ul className="space-y-1.5">
+            {solved.map((i) => (
+              <li key={i} className="text-base font-bold leading-snug">
+                {p.pairs[i].left} <span className="text-leaf">–</span> {p.pairs[i].right}
+                {firstTry[i] !== i && <span className="ml-1.5 text-sm font-bold text-tomato">(na druhý pokus)</span>}
+              </li>
+            ))}
+          </ul>
         </div>
-      </div>
-      {!done && <p className="text-center text-sm text-slate font-semibold">{left === null ? "Ťukni vľavo" : "Teraz vyber vpravo"}</p>}
+      )}
+
+      {!done && !miss && <p className="text-center text-sm text-slate font-semibold">{left === null ? "Ťukni vľavo" : "Teraz vyber vpravo"}</p>}
+      {miss && <p className="text-center text-sm font-black text-tomato">Toto k sebe nepatrí, skús inú dvojicu.</p>}
     </div>
   );
 }

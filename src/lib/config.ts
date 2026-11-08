@@ -1,15 +1,17 @@
 "use client";
 
 import type { SubjectSlug } from "@/data/subjects";
-import { TYPES, type ExerciseType } from "./exercises";
+import { ASPECT_KEYS, TYPES, type Aspect, type ExerciseType } from "./exercises";
 import { supabase } from "./supabase";
 import type { SubjectConfig } from "./types";
 
 const allTypes = (on: boolean) => Object.fromEntries(TYPES.map((t) => [t.key, on])) as Record<ExerciseType, boolean>;
+const allAspects = (on: boolean) => Object.fromEntries(ASPECT_KEYS.map((k) => [k, on])) as Record<Aspect, boolean>;
 
 export const DEFAULT_CONFIG: SubjectConfig = {
   enabled: false,
   types: allTypes(true),
+  aspects: allAspects(true),
   generateCount: 20,
   masteryStreak: 3,
   encouragement: true,
@@ -28,9 +30,11 @@ const bool = (v: unknown, d: boolean) => (typeof v === "boolean" ? v : d);
 export function mergeConfig(raw: unknown): SubjectConfig {
   const r = (raw && typeof raw === "object" ? raw : {}) as Partial<SubjectConfig>;
   const types = (r.types ?? {}) as Record<string, unknown>;
+  const aspects = (r.aspects ?? {}) as Record<string, unknown>;
   return {
     enabled: bool(r.enabled, DEFAULT_CONFIG.enabled),
     types: Object.fromEntries(TYPES.map((t) => [t.key, bool(types[t.key], true)])) as Record<ExerciseType, boolean>,
+    aspects: Object.fromEntries(ASPECT_KEYS.map((k) => [k, bool(aspects[k], true)])) as Record<Aspect, boolean>,
     generateCount: clamp(r.generateCount, LIMITS.generateCount, DEFAULT_CONFIG.generateCount),
     masteryStreak: clamp(r.masteryStreak, LIMITS.masteryStreak, DEFAULT_CONFIG.masteryStreak),
     encouragement: bool(r.encouragement, true),

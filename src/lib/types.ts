@@ -1,8 +1,9 @@
 import type { SubjectSlug } from "@/data/subjects";
-import type { ExerciseType, Payload } from "./exercises";
+import type { Aspect, ExerciseType, Payload } from "./exercises";
 import type { MindMapData } from "./mindmap";
+import type { TimelineData } from "./timeline";
 
-export type { SubjectSlug, ExerciseType, Payload, MindMapData };
+export type { SubjectSlug, Aspect, ExerciseType, Payload, MindMapData, TimelineData };
 
 export type Child = { id: string; name: string; avatar: string; grade: number };
 
@@ -33,10 +34,12 @@ export type Source = {
 export type Mindmap = {
   id: string;
   lesson_id: string;
+  /** myšlienková mapa alebo časová os — obe sa generujú a tlačia rovnako */
+  kind: "mindmap" | "timeline";
   pages: number[];
   prompt: string;
   title: string;
-  data: MindMapData;
+  data: MindMapData | TimelineData;
   active: boolean;
   created_at: string;
 };
@@ -48,8 +51,38 @@ export type Exercise = {
   payload: Payload;
   concept: string;
   level: number;
+  /** o akú časť učiva ide — podľa toho sa dajú vypnúť napríklad letopočty */
+  aspect: Aspect;
   source_id: string | null;
   enabled: boolean;
+  /** prešlo kontrolou AI; rodič vie príznak zhodiť a dať cvičenie skontrolovať znova */
+  checked: boolean;
+  /** čo kontrole vadilo, keď neprešla */
+  check_note: string | null;
+  position: number;
+  created_at: string;
+};
+
+/** Pomenovaný výber cvičení — žiak ho spustí ako samostatný podtréning. */
+export type ExerciseSet = {
+  id: string;
+  lesson_id: string;
+  name: string;
+  exercise_ids: string[];
+  active: boolean;
+  position: number;
+  created_at: string;
+};
+
+/** Obrázok vyrezaný z nafotenej strany učebnice. */
+export type Figure = {
+  id: string;
+  lesson_id: string;
+  source_id: string | null;
+  page: number;
+  path: string;
+  caption: string;
+  explain: string;
   position: number;
   created_at: string;
 };
@@ -100,6 +133,8 @@ export type SubjectConfig = {
   enabled: boolean;
   /** ktoré typy cvičení sa generujú a trénujú */
   types: Record<ExerciseType, boolean>;
+  /** ktoré časti učiva sa skúšajú; vypnuté sa do tréningu nedostanú */
+  aspects: Record<Aspect, boolean>;
   /** koľko cvičení vyrobiť z jedného materiálu */
   generateCount: number;
   /** koľko správnych odpovedí za sebou znamená zvládnuté */

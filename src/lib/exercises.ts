@@ -117,6 +117,26 @@ export function isCorrect(type: ExerciseType, payload: Payload, answer: Answer):
 }
 
 /** Krátky text cvičenia pre zoznamy a súhrn. */
+/**
+ * Aspekt = o akú časť učiva cvičenie ide. Rodič niektoré vypne, keď ich
+ * učiteľ neskúša — typicky letopočty — a žiak dostane oznam, že sa ich
+ * učiť nemusí. Delenie je rovnaké pre všetky predmety, len sa inak napĺňa.
+ */
+export type Aspect = "roky" | "cisla" | "mena" | "miesta" | "pojmy" | "suvislosti";
+
+export const ASPECTS: { key: Aspect; label: string; hint: string; skip: string }[] = [
+  { key: "roky", label: "Letopočty a dátumy", hint: "kedy sa čo stalo", skip: "Letopočty sa učiť nemusíš." },
+  { key: "cisla", label: "Čísla a údaje", hint: "rozloha, počty, miery", skip: "Čísla a údaje sa učiť nemusíš." },
+  { key: "mena", label: "Mená a osobnosti", hint: "kto je kto", skip: "Mená osobností sa učiť nemusíš." },
+  { key: "miesta", label: "Miesta a názvy", hint: "kde sa čo nachádza", skip: "Zemepisné názvy sa učiť nemusíš." },
+  { key: "pojmy", label: "Pojmy a výrazy", hint: "čo ktoré slovo znamená", skip: "Odborné pojmy sa učiť nemusíš." },
+  { key: "suvislosti", label: "Súvislosti", hint: "príčiny, následky, postupy", skip: "Súvislosti sa učiť nemusíš." },
+];
+
+export const ASPECT_KEYS = ASPECTS.map((a) => a.key);
+export const aspectDef = (a: string) => ASPECTS.find((x) => x.key === a);
+export const isAspect = (v: unknown): v is Aspect => typeof v === "string" && (ASPECT_KEYS as string[]).includes(v);
+
 export function preview(type: ExerciseType, payload: Payload): string {
   if (type === "mcq") return (payload as McqPayload).question;
   if (type === "truefalse") return (payload as TrueFalsePayload).statement;
@@ -125,21 +145,27 @@ export function preview(type: ExerciseType, payload: Payload): string {
   return (payload as OrderPayload).prompt;
 }
 
-/** Správna odpoveď v čitateľnej podobe, ukáže sa po chybe. */
-export function solution(type: ExerciseType, payload: Payload): string {
+/**
+ * Správna odpoveď rozpísaná po riadkoch — jedna odpoveď na riadok.
+ * Žiak si po chybe potrebuje riešenie prečítať, a zlepené do jedného odseku sa to nedá.
+ */
+export function solutionLines(type: ExerciseType, payload: Payload): string[] {
   if (type === "mcq") {
     const p = payload as McqPayload;
-    return p.correct.map((i) => p.options[i]).join(", ");
+    return p.correct.map((i) => p.options[i]);
   }
-  if (type === "truefalse") return (payload as TrueFalsePayload).answer ? "pravda" : "nepravda";
-  if (type === "pairs") return (payload as PairsPayload).pairs.map((p) => `${p.left} – ${p.right}`).join(" · ");
+  if (type === "truefalse") return [(payload as TrueFalsePayload).answer ? "pravda" : "nepravda"];
+  if (type === "pairs") return (payload as PairsPayload).pairs.map((p) => `${p.left} – ${p.right}`);
   if (type === "cloze") {
     const p = payload as ClozePayload;
     let i = 0;
-    return p.text.replaceAll(GAP, () => p.answers[i++] ?? GAP);
+    return [p.text.replaceAll(GAP, () => p.answers[i++] ?? GAP)];
   }
-  return (payload as OrderPayload).items.map((x, i) => `${i + 1}. ${x}`).join(" · ");
+  return (payload as OrderPayload).items.map((x, i) => `${i + 1}. ${x}`);
 }
+
+/** Tá istá odpoveď na jeden riadok — do zoznamov a náhľadov, kde nie je miesto. */
+export const solution = (type: ExerciseType, payload: Payload) => solutionLines(type, payload).join(type === "mcq" ? ", " : " · ");
 
 export function explainOf(type: ExerciseType, payload: Payload): string | undefined {
   if (type === "mcq") return (payload as McqPayload).explain;
@@ -159,8 +185,9 @@ export const AI_SCHEMA: Record<ExerciseType, Record<string, unknown>> = {
       explain: { type: "string", description: "jedna veta, prečo je to tak" },
       concept: { type: "string", description: "téma otázky, 1 až 3 slová" },
       level: { type: "integer", description: "1 priamo z textu, 2 spojenie dvoch faktov, 3 záludná" },
+      aspect: { type: "string", description: "roky, cisla, mena, miesta, pojmy alebo suvislosti" },
     },
-    required: ["question", "options", "correct", "explain", "concept", "level"],
+    required: ["question", "options", "correct", "explain", "concept", "level", "aspect"],
   },
   truefalse: {
     type: "object",
@@ -170,8 +197,9 @@ export const AI_SCHEMA: Record<ExerciseType, Record<string, unknown>> = {
       explain: { type: "string", description: "jedna veta s vysvetlením" },
       concept: { type: "string" },
       level: { type: "integer" },
+      aspect: { type: "string", description: "roky, cisla, mena, miesta, pojmy alebo suvislosti" },
     },
-    required: ["statement", "answer", "explain", "concept", "level"],
+    required: ["statement", "answer", "explain", "concept", "level", "aspect"],
   },
   pairs: {
     type: "object",
@@ -184,8 +212,9 @@ export const AI_SCHEMA: Record<ExerciseType, Record<string, unknown>> = {
       },
       concept: { type: "string" },
       level: { type: "integer" },
+      aspect: { type: "string", description: "roky, cisla, mena, miesta, pojmy alebo suvislosti" },
     },
-    required: ["prompt", "pairs", "concept", "level"],
+    required: ["prompt", "pairs", "concept", "level", "aspect"],
   },
   cloze: {
     type: "object",
@@ -196,8 +225,9 @@ export const AI_SCHEMA: Record<ExerciseType, Record<string, unknown>> = {
       explain: { type: "string" },
       concept: { type: "string" },
       level: { type: "integer" },
+      aspect: { type: "string", description: "roky, cisla, mena, miesta, pojmy alebo suvislosti" },
     },
-    required: ["text", "answers", "options", "explain", "concept", "level"],
+    required: ["text", "answers", "options", "explain", "concept", "level", "aspect"],
   },
   order: {
     type: "object",
@@ -206,7 +236,8 @@ export const AI_SCHEMA: Record<ExerciseType, Record<string, unknown>> = {
       items: { type: "array", items: { type: "string" }, description: "4 položky v SPRÁVNOM poradí" },
       concept: { type: "string" },
       level: { type: "integer" },
+      aspect: { type: "string", description: "roky, cisla, mena, miesta, pojmy alebo suvislosti" },
     },
-    required: ["prompt", "items", "concept", "level"],
+    required: ["prompt", "items", "concept", "level", "aspect"],
   },
 };

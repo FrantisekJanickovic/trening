@@ -1,13 +1,15 @@
 "use client";
 
-import type { ExerciseType, Payload } from "./exercises";
+import type { Aspect, ExerciseType, Payload } from "./exercises";
+import type { FoundFigure } from "./figures";
 import type { MindMapData } from "./mindmap";
+import type { TimelineData } from "./timeline";
 import { authHeader } from "./supabase";
 import type { SubjectSlug } from "./types";
 
 export type Section = { heading: string; text: string };
-export type Transcript = { title: string; sections: Section[] };
-export type Generated = { type: ExerciseType; payload: Payload; concept: string; level: number; source: number | null };
+export type Transcript = { title: string; sections: Section[]; figures: FoundFigure[] };
+export type Generated = { type: ExerciseType; payload: Payload; concept: string; level: number; aspect: Aspect; source: number | null };
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify(body) });
@@ -40,8 +42,14 @@ export async function toJpegBase64(file: File, max = 2000): Promise<{ data: stri
 export const transcribe = (image: { data: string; mediaType: string }, subject: SubjectSlug, grade: number | null) =>
   post<Transcript>("/api/ai/transcribe", { image: image.data, mediaType: image.mediaType, subject, grade });
 
-export const generateMindmap = (input: { subject: SubjectSlug; grade: number | null; title: string; scope: string; sections: Section[]; prompt: string }) =>
-  post<{ map: MindMapData }>("/api/ai/mindmap", input);
+type AidInput = { subject: SubjectSlug; grade: number | null; title: string; scope: string; sections: Section[]; prompt: string };
+
+export const generateMindmap = (input: AidInput) => post<{ map: MindMapData }>("/api/ai/mindmap", input);
+
+export const generateTimeline = (input: AidInput) => post<{ timeline: TimelineData }>("/api/ai/timeline", input);
+
+export const factcheck = (input: { subject: SubjectSlug; grade: number | null; title: string; sections: Section[]; items: { id: string; text: string }[] }) =>
+  post<{ results: { id: string; ok: boolean; note: string }[]; missing: string[] }>("/api/ai/factcheck", input);
 
 export const generateExercises = (input: {
   subject: SubjectSlug;

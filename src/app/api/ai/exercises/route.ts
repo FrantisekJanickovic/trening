@@ -1,5 +1,5 @@
 import { GRADES, subjectDef } from "@/data/subjects";
-import { AI_SCHEMA, cleanPayload, isType, TYPES, type ExerciseType, type Payload } from "@/lib/exercises";
+import { AI_SCHEMA, ASPECTS, cleanPayload, isAspect, isType, TYPES, type Aspect, type ExerciseType, type Payload } from "@/lib/exercises";
 import { aiConfigured, NOT_CONFIGURED, structured } from "@/lib/openai";
 import { requireUser, unauthorized } from "@/lib/server-auth";
 
@@ -7,9 +7,9 @@ export const maxDuration = 300;
 
 type Section = { heading?: string; text?: string };
 type In = { subject?: string; grade?: number | null; title?: string; sections?: Section[]; types?: string[]; count?: number; avoid?: string[] };
-type RawItem = Record<string, unknown> & { concept?: unknown; level?: unknown; source?: unknown };
+type RawItem = Record<string, unknown> & { concept?: unknown; level?: unknown; aspect?: unknown; source?: unknown };
 
-export type Generated = { type: ExerciseType; payload: Payload; concept: string; level: number; source: number | null };
+export type Generated = { type: ExerciseType; payload: Payload; concept: string; level: number; aspect: Aspect; source: number | null };
 
 /** Koľko cvičení z každého typu, aby ich bolo spolu `count`. */
 function quotas(types: ExerciseType[], count: number) {
@@ -35,6 +35,9 @@ Pravidlá pre všetky cvičenia:
 - Nepoužívaj formulácie ako „podľa textu“ alebo „v učebnici“. Otázka má dávať zmysel aj samostatne.
 - "concept" je téma cvičenia v 1 až 3 slovách, podľa nej sa cvičenia zoskupujú.
 - "source" je číslo časti prepisu, z ktorej cvičenie vzniklo.
+- "aspect" je to, čo si dieťa musí pri tomto cvičení zapamätať. Vyber jednu možnosť:
+${ASPECTS.map((a) => `  ${a.key} — ${a.hint}`).join("\n")}
+  Ak sa cvičenie pýta na rok alebo dátum, patrí vždy do "roky", aj keď je v ňom aj meno alebo miesto.
 - Žiadne násilie, alkohol, politické hodnotenia ani nevhodné témy.
 ${def ? `\nNa čo si dať pozor v tomto predmete: ${def.hint}` : ""}${
     avoid.length ? `\n\nTieto cvičenia už existujú, vyrob iné:\n${avoid.slice(0, 120).join("\n")}` : ""
@@ -80,6 +83,7 @@ export async function POST(req: Request) {
         const srcRaw = Number(item.source);
         const source = Number.isInteger(srcRaw) && srcRaw >= 1 && srcRaw <= sections.length ? srcRaw - 1 : null;
         const level = Number(item.level);
+        const aspect: Aspect = isAspect(item.aspect) ? item.aspect : "pojmy";
         out.push({
           type: key,
           payload,
@@ -87,6 +91,7 @@ export async function POST(req: Request) {
             .trim()
             .slice(0, 80),
           level: level >= 1 && level <= 3 ? level : 1,
+          aspect,
           source,
         });
       }

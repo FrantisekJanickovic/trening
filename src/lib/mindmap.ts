@@ -6,32 +6,14 @@
  * aby text používal rovnaké písmo ako appka (SVG načítaný ako obrázok by o fonte
  * nevedel) a aby diakritika vyšla vždy správne.
  */
+import { COLORS, FONT, INK, SLATE, paintCaption, roundRect, textLines, wrap } from "./paper";
 
 export type MindItem = { label: string; items?: string[] };
 export type MindBranch = { label: string; items: MindItem[] };
 export type MindMapData = { center: string; branches: MindBranch[] };
 
-export const PAGES = {
-  a4: { w: 297, h: 210, label: "A4" },
-  a3: { w: 420, h: 297, label: "A3" },
-} as const;
-export type PageFormat = keyof typeof PAGES;
+export const isMindmap = (d: unknown): d is MindMapData => !!d && typeof d === "object" && Array.isArray((d as MindMapData).branches);
 
-/** Farby vetiev — tie isté, aké používa appka, aby mapa vyzerala ako jej súčasť. */
-const COLORS = [
-  { line: "#3d6cf0", soft: "#e4ebfe" },
-  { line: "#1f9d63", soft: "#e1f6ec" },
-  { line: "#e0a500", soft: "#fff4d1" },
-  { line: "#e5484d", soft: "#fde8e8" },
-  { line: "#8b5cf6", soft: "#efe9fe" },
-  { line: "#0ea5a4", soft: "#dcf7f6" },
-  { line: "#db2777", soft: "#fce7f3" },
-];
-
-const INK = "#1b2559";
-const SLATE = "#49527a";
-
-const FONT = (weight: number, size: number) => `${weight} ${size}px "Nunito Variable", ui-rounded, system-ui, sans-serif`;
 const F_CENTER = { font: FONT(900, 34), line: 42 };
 const F_BRANCH = { font: FONT(800, 21), line: 27 };
 const F_ITEM = { font: FONT(700, 17), line: 23 };
@@ -50,24 +32,6 @@ type Box = { x: number; y: number; w: number; h: number; lines: string[] };
 type LaidItem = Box & { subs: { lines: string[]; y: number; h: number } };
 type LaidBranch = { side: 1 | -1; color: (typeof COLORS)[number]; box: Box; items: LaidItem[] };
 export type Layout = { center: Box; branches: LaidBranch[]; width: number; height: number };
-
-function wrap(ctx: CanvasRenderingContext2D, text: string, font: string, maxW: number): string[] {
-  ctx.font = font;
-  const words = String(text ?? "").trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return [""];
-  const out: string[] = [];
-  let line = words[0];
-  for (const w of words.slice(1)) {
-    const next = `${line} ${w}`;
-    if (ctx.measureText(next).width <= maxW) line = next;
-    else {
-      out.push(line);
-      line = w;
-    }
-  }
-  out.push(line);
-  return out;
-}
 
 /** Vyskladá mapu okolo stredu v bode (0, 0); súradnice sa na konci posunú do kladných čísel. */
 export function layout(ctx: CanvasRenderingContext2D, data: MindMapData, blockGap = BLOCK_GAP): Layout {
@@ -152,18 +116,6 @@ export function layout(ctx: CanvasRenderingContext2D, data: MindMapData, blockGa
     width: Math.max(...xs) - minX,
     height: Math.max(...ys) - minY,
   };
-}
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, r);
-}
-
-function textLines(ctx: CanvasRenderingContext2D, lines: string[], x: number, y: number, lineH: number, font: string, color: string) {
-  ctx.font = font;
-  ctx.fillStyle = color;
-  ctx.textBaseline = "top";
-  lines.forEach((l, i) => ctx.fillText(l, x, y + i * lineH));
 }
 
 /** Krivka od okraja jedného boxu k okraju druhého — mäkká, nie lomená čiara. */
@@ -257,43 +209,9 @@ export function render(canvas: HTMLCanvasElement, data: MindMapData, px: { w: nu
   paint(ctx, l);
   ctx.restore();
 
-  if (caption) {
-    const size = Math.round(capH * 0.62);
-    ctx.font = FONT(700, size);
-    ctx.fillStyle = SLATE;
-    ctx.textBaseline = "top";
-    ctx.fillText(caption, margin, margin);
-  }
+  if (caption) paintCaption(ctx, caption, margin, capH);
 }
 
 /** Popis, z čoho mapa vznikla — ide do hlavičky tlače aj do zoznamu v appke. */
 export const pagesLabel = (pages: number[]) =>
   !pages.length ? "celá kapitola" : pages.length === 1 ? `strana ${pages[0]}` : `strany ${[...pages].sort((a, b) => a - b).join(", ")}`;
-
-const safeName = (s: string) =>
-  s
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .toLowerCase()
-    .slice(0, 60) || "mapa";
-
-/**
- * Stiahne mapu ako PDF presne v danom formáte na šírku.
- * 200 dpi je pre tlač mapy viac než dosť a súbor ostane rozumne veľký.
- */
-export async function downloadPdf(data: MindMapData, format: PageFormat, caption: string, name: string) {
-  const page = PAGES[format];
-  const dpi = 200;
-  const px = { w: Math.round((page.w / 25.4) * dpi), h: Math.round((page.h / 25.4) * dpi) };
-  if (typeof document !== "undefined" && document.fonts?.ready) await document.fonts.ready;
-
-  const canvas = document.createElement("canvas");
-  render(canvas, data, px, caption);
-
-  const { jsPDF } = await import("jspdf");
-  const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format });
-  pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, page.w, page.h);
-  pdf.save(`${safeName(name)}-${format}.pdf`);
-}

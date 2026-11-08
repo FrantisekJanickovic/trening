@@ -1,18 +1,19 @@
 "use client";
 
-import { ArrowLeft, ChartNoAxesColumn, Network, Target } from "lucide-react";
+import { ArrowLeft, ChartNoAxesColumn, Images, Network, Play, Target } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { MapDownloads } from "@/components/mindmap-view";
 import { PagePicker } from "@/components/pages-picker";
-import { Button, Card, Spinner, cx } from "@/components/ui";
+import { Button, Card, Spinner, buttonClass, cx } from "@/components/ui";
 import { subjectDef, type SubjectSlug } from "@/data/subjects";
 import { loadConfig } from "@/lib/config";
-import { getChild, loadExercises, loadLessons, loadMindmaps, loadProgress, loadSourcesFor } from "@/lib/data";
+import { getChild, loadExercises, loadFigures, loadLessons, loadMindmaps, loadProgress, loadSets, loadSourcesFor } from "@/lib/data";
+import { ASPECTS } from "@/lib/exercises";
 import { describePages, encodePages, filterByPages, pagesOf, type Selection } from "@/lib/pages";
 import { COUNTS } from "@/lib/plan";
-import type { Child, Exercise, LessonWithCounts, Mindmap, Progress, Source } from "@/lib/types";
+import type { Child, Exercise, ExerciseSet, LessonWithCounts, Mindmap, Progress, Source, SubjectConfig } from "@/lib/types";
 
 const key = (child: string, subject: string) => `trening.setup.${subject}.${child}`;
 
@@ -27,6 +28,9 @@ export default function LessonPicker() {
   const [progress, setProgress] = useState<Progress[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [maps, setMaps] = useState<Mindmap[]>([]);
+  const [sets, setSets] = useState<ExerciseSet[]>([]);
+  const [figureCount, setFigureCount] = useState(0);
+  const [config, setConfig] = useState<SubjectConfig | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [pageSel, setPageSel] = useState<Selection>({});
   const [count, setCount] = useState(15);
@@ -37,12 +41,20 @@ export default function LessonPicker() {
       const [ls, cfg] = await Promise.all([loadLessons(slug), loadConfig(slug)]);
       const ready = ls.filter((l) => l.exercises > 0);
       setLessons(ready);
-      void cfg;
+      setConfig(cfg);
       const ids = ready.map((l) => l.id);
-      const [ex, src, mm] = await Promise.all([loadExercises(ids, true), loadSourcesFor(ids), loadMindmaps(ids, true)]);
+      const [ex, src, mm, st, figs] = await Promise.all([
+        loadExercises(ids, true),
+        loadSourcesFor(ids),
+        loadMindmaps(ids, true),
+        loadSets(ids, true),
+        loadFigures(ids),
+      ]);
       setExercises(ex);
       setSources(src);
       setMaps(mm);
+      setSets(st);
+      setFigureCount(figs.length);
       setProgress(
         await loadProgress(
           childId,
@@ -62,9 +74,17 @@ export default function LessonPicker() {
 
   /** Cvičenia zúžené na vybrané lekcie aj vybrané strany. */
   const inScope = useMemo(
-    () => filterByPages(exercises.filter((e) => picked.includes(e.lesson_id)), sources, pageSel),
-    [exercises, sources, picked, pageSel],
+    () =>
+      filterByPages(
+        exercises.filter((e) => picked.includes(e.lesson_id) && (!config || config.aspects[e.aspect] !== false)),
+        sources,
+        pageSel,
+      ),
+    [exercises, sources, picked, pageSel, config],
   );
+
+  /** Čo rodič vypol — dieťa to má vedieť dopredu, nie sa to dohadovať. */
+  const skipped = ASPECTS.filter((a) => config && config.aspects[a.key] === false);
 
   const open = useMemo(() => {
     const ids = new Set(progress.filter((p) => !p.mastered && p.wrong_count > 0).map((p) => p.exercise_id));
@@ -96,6 +116,12 @@ export default function LessonPicker() {
   }
 
   const activeMaps = maps.filter((m) => lessons.some((l) => l.id === m.lesson_id));
+  const activeSets = sets.filter((x) => lessons.some((l) => l.id === x.lesson_id));
+
+  // token sa berie z kliknutia, nie z renderu, aby sa dal ten istý tréning spustiť znova
+  function startSet(x: ExerciseSet, t: string) {
+    router.push(`/predmet/${slug}/trening?child=${childId}&lessons=${x.lesson_id}&set=${x.id}&count=${COUNTS[COUNTS.length - 1]}&mode=normal&t=${t}`);
+  }
 
   const byGrade = [...new Set(lessons.map((l) => l.grade ?? 0))].sort((a, b) => a - b);
 
@@ -198,10 +224,54 @@ export default function LessonPicker() {
                 </option>
               ))}
             </select>
+            {skipped.length > 0 && (
+              <p className="mt-3 rounded-2xl bg-sky-soft text-sky px-3.5 py-2.5 text-sm font-bold">
+                {skipped.map((a) => a.skip).join(" ")}
+              </p>
+            )}
             {picked.length > 0 && available < count && (
               <p className="text-sm text-slate font-semibold mt-2">Pre tento výber je pripravených {available} cvičení, tréning ich bude mať toľko.</p>
             )}
           </section>
+
+          {activeSets.length > 0 && (
+            <section className="mt-8">
+              <h2 className="text-xl font-black flex items-center gap-2">
+                <Target className="size-5 text-sun-deep" /> Pripravené sady
+              </h2>
+              <p className="text-sm text-slate font-semibold mt-1">Kratší tréning presne na to, čo sa skúša.</p>
+              <div className="space-y-2 mt-3">
+                {activeSets.map((x) => (
+                  <Card key={x.id} className="p-3 flex flex-wrap items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-black truncate">{x.name}</p>
+                      <p className="text-sm text-slate font-semibold">
+                        {x.exercise_ids.length} cvičení · {lessons.find((l) => l.id === x.lesson_id)?.title ?? ""}
+                      </p>
+                    </div>
+                    <Button variant="sun" onClick={() => startSet(x, Date.now().toString(36))}>
+                      <Play className="size-4" /> Spustiť
+                    </Button>
+                  </Card>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {figureCount > 0 && (
+            <section className="mt-8">
+              <Card className="p-4 flex flex-wrap items-center gap-3">
+                <Images className="size-6 text-sky shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-black">Obrázky z učebnice</p>
+                  <p className="text-sm text-slate font-semibold">{figureCount} obrázkov s vysvetlením. Len na pozeranie, nie je to test.</p>
+                </div>
+                <Link href={`/predmet/${slug}/galeria?child=${childId}`} className={buttonClass("outline", "md")}>
+                  Otvoriť galériu
+                </Link>
+              </Card>
+            </section>
+          )}
 
           {activeMaps.length > 0 && (
             <section className="mt-8">

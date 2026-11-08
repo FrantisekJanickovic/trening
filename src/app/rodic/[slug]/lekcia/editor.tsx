@@ -1,18 +1,21 @@
 "use client";
 
-import { ArrowLeft, Camera, Eye, EyeOff, Loader2, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, Camera, Loader2, Sparkles, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ExerciseForm, emptyPayload } from "@/components/exercise/editors";
 import { Button, Card, ErrorNote, Field, Input, Segmented, Spinner, Textarea, cx } from "@/components/ui";
 import { GRADES, gradeLabel, subjectDef, type SubjectSlug } from "@/data/subjects";
 import { aiInfo, generateExercises, toJpegBase64, transcribe } from "@/lib/ai";
 import { DEFAULT_CONFIG, loadConfig } from "@/lib/config";
 import { getLesson, loadExercises, loadSources } from "@/lib/data";
-import { TYPES, preview, solution, typeLabel, type ExerciseType, type Payload } from "@/lib/exercises";
+import { runFactcheck } from "@/lib/factcheck";
+import { cropFigures, saveFigures } from "@/lib/figures";
+import { TYPES, preview } from "@/lib/exercises";
 import { supabase } from "@/lib/supabase";
 import type { Exercise, Lesson, Source, SubjectConfig } from "@/lib/types";
+import ExercisesTab from "./exercises-tab";
+import Gallery from "./gallery";
 import Mindmaps from "./mindmaps";
 
 type Queue = { key: string; name: string; state: "waiting" | "reading" | "done" | "error"; note?: string };
@@ -32,14 +35,14 @@ export default function LessonEditor() {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [config, setConfig] = useState<SubjectConfig>(DEFAULT_CONFIG);
   const [ai, setAi] = useState(true);
-  const [tab, setTab] = useState<"material" | "exercises" | "maps">("material");
+  const [tab, setTab] = useState<"material" | "exercises" | "maps" | "gallery">("material");
   const [queue, setQueue] = useState<Queue[]>([]);
   const [busy, setBusy] = useState<"save" | "generate" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [count, setCount] = useState(20);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [adding, setAdding] = useState<ExerciseType | null>(null);
+  const [fromSources, setFromSources] = useState<string[]>([]);
+  const [figureCount, setFigureCount] = useState(0);
   const [loaded, setLoaded] = useState(!lessonId);
 
   const reload = useCallback(async (id: string) => {
@@ -130,8 +133,21 @@ export default function LessonEditor() {
         if (!t.sections.length) throw new Error("Zo strany sa nepodarilo nič prečítať.");
         const base = Math.max(0, ...sources.map((s) => s.position), -1) + 1;
         const rows = t.sections.map((s, j) => ({ lesson_id: lessonRow.id, page, heading: s.heading || null, text: s.text, position: base + i * 100 + j }));
-        const { error } = await supabase().from("tr_sources").insert(rows);
+        const { data: inserted, error } = await supabase().from("tr_sources").insert(rows).select("id");
         if (error) throw new Error(error.message);
+
+        // obrázky zo strany idú do galérie; keď sa to nepodarí, prepis textu tým netrpí
+        let figNote = "";
+        try {
+          const crops = await cropFigures(files[i], t.figures ?? []);
+          if (crops.length) {
+            const n = await saveFigures(lessonRow.id, (inserted ?? [])[0]?.id ?? null, page, crops, Date.now());
+            setFigureCount((c) => c + n);
+            figNote = `, ${n} obrázkov`;
+          }
+        } catch {
+          figNote = ", obrázky sa nepodarilo uložiť";
+        }
         if (!lessonRow.title || lessonRow.title === "Nová lekcia") {
           if (t.title) {
             await supabase().from("tr_lessons").update({ title: t.title }).eq("id", lessonRow.id);
@@ -141,7 +157,7 @@ export default function LessonEditor() {
           }
         }
         page++;
-        setQueue((q) => q.map((x) => (x.key === item.key ? { ...x, state: "done", note: `${t.sections.length} častí` } : x)));
+        setQueue((q) => q.map((x) => (x.key === item.key ? { ...x, state: "done", note: `${t.sections.length} častí${figNote}` } : x)));
         await reload(lessonRow.id);
       } catch (e) {
         setQueue((q) => q.map((x) => (x.key === item.key ? { ...x, state: "error", note: e instanceof Error ? e.message : "Chyba" } : x)));
@@ -156,11 +172,13 @@ export default function LessonEditor() {
     setInfo(null);
     try {
       const types = TYPES.filter((t) => config.types[t.key]).map((t) => t.key);
+      // keď si rodič vybral len niektoré časti, cvičenia vzniknú iba z nich
+      const used = fromSources.length ? sources.filter((s) => fromSources.includes(s.id)) : sources;
       const r = await generateExercises({
         subject: slug,
         grade: lesson.grade,
         title: lesson.title,
-        sections: sources.map((s) => ({ heading: s.heading ?? "", text: s.text })),
+        sections: used.map((s) => ({ heading: s.heading ?? "", text: s.text })),
         types,
         count,
         avoid: exercises.map((e) => preview(e.type, e.payload).slice(0, 120)),
@@ -171,44 +189,32 @@ export default function LessonEditor() {
         payload: x.payload,
         concept: x.concept,
         level: x.level,
-        source_id: x.source !== null ? (sources[x.source]?.id ?? null) : null,
+        aspect: x.aspect,
+        source_id: x.source !== null ? (used[x.source]?.id ?? null) : null,
         position: Date.now() + i,
       }));
-      const { error } = await supabase().from("tr_exercises").insert(rows);
+      const { data: made, error } = await supabase().from("tr_exercises").insert(rows).select("*");
       if (error) throw new Error(error.message);
       await reload(lesson.id);
       setTab("exercises");
-      setInfo(`Vytvorených ${rows.length} cvičení.${rows.length < count ? ` Z ${count} žiadaných bolo zvyšok nepoužiteľných.` : ""}`);
+      setInfo(`Vytvorených ${rows.length} cvičení.${rows.length < count ? ` Z ${count} žiadaných bolo zvyšok nepoužiteľných.` : ""} Spúšťam kontrolu…`);
+
+      // hneď po vygenerovaní ich dá appka skontrolovať druhým volaním AI
+      try {
+        const check = await runFactcheck({ slug, lesson, sources: used, exercises: (made ?? []) as Exercise[] });
+        await reload(lesson.id);
+        setInfo(
+          `Vytvorených ${rows.length} cvičení. Kontrola: ${check.checked} v poriadku` +
+            (check.problems ? `, ${check.problems} s výhradou — pozri poznámky pri cvičeniach.` : "."),
+        );
+      } catch {
+        setInfo(`Vytvorených ${rows.length} cvičení. Automatická kontrola zlyhala, spusti ju tlačidlom „Skontrolovať neoznačené“.`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generovanie zlyhalo.");
     } finally {
       setBusy(null);
     }
-  }
-
-  async function saveExercise(id: string | null, type: ExerciseType, payload: Payload, concept: string) {
-    if (!lesson) return;
-    const sb = supabase();
-    const { error } = id
-      ? await sb.from("tr_exercises").update({ payload, concept, updated_at: new Date().toISOString() }).eq("id", id)
-      : await sb.from("tr_exercises").insert({ lesson_id: lesson.id, type, payload, concept, level: 1, position: Date.now() });
-    if (error) throw new Error(error.message);
-    setEditing(null);
-    setAdding(null);
-    await reload(lesson.id);
-  }
-
-  async function removeExercise(id: string) {
-    if (!lesson || !window.confirm("Zmazať toto cvičenie?")) return;
-    const { error } = await supabase().from("tr_exercises").delete().eq("id", id);
-    if (error) setError(error.message);
-    await reload(lesson.id);
-  }
-
-  async function toggleExercise(e: Exercise) {
-    if (!lesson) return;
-    await supabase().from("tr_exercises").update({ enabled: !e.enabled }).eq("id", e.id);
-    await reload(lesson.id);
   }
 
   async function saveSource(s: Source, text: string) {
@@ -278,13 +284,17 @@ export default function LessonEditor() {
         options={[
           { value: "material", label: `Materiál (${sources.length})` },
           { value: "exercises", label: `Cvičenia (${exercises.length})` },
-          ...(lesson ? [{ value: "maps" as const, label: "Myšlienkové mapy" }] : []),
+          ...(lesson ? [{ value: "maps" as const, label: "Mapy a osi" }, { value: "gallery" as const, label: "Galéria" }] : []),
         ]}
       />
 
       {tab === "maps" && lesson ? (
         <Card className="p-4 sm:p-5">
           <Mindmaps lesson={lesson} sources={sources} slug={slug} ai={ai} />
+        </Card>
+      ) : tab === "gallery" && lesson ? (
+        <Card className="p-4 sm:p-5">
+          <Gallery lesson={lesson} key={figureCount} />
         </Card>
       ) : tab === "material" ? (
         <Card className="p-4 sm:p-5 space-y-4">
@@ -355,6 +365,41 @@ export default function LessonEditor() {
             {sources.length === 0 && <p className="rounded-2xl bg-paper px-4 py-6 text-center text-slate">Zatiaľ žiadny materiál.</p>}
           </div>
 
+          {sources.length > 1 && (
+            <div className="rounded-2xl bg-paper p-3 space-y-2">
+              <p className="text-sm font-black">Z ktorých častí generovať</p>
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                <label className="inline-flex items-center gap-1.5 text-sm font-bold cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={fromSources.length === 0}
+                    onChange={() => setFromSources(fromSources.length === 0 ? sources.slice(1).map((s) => s.id) : [])}
+                    className="size-4 accent-[#1b2559]"
+                  />
+                  Zo všetkých
+                </label>
+                {sources.map((s) => (
+                  <label key={s.id} className="inline-flex items-center gap-1.5 text-sm font-bold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={fromSources.length === 0 || fromSources.includes(s.id)}
+                      onChange={() => {
+                        const cur = fromSources.length === 0 ? sources.map((x) => x.id) : fromSources;
+                        const next = cur.includes(s.id) ? cur.filter((x) => x !== s.id) : [...cur, s.id];
+                        setFromSources(next.length === sources.length ? [] : next);
+                      }}
+                      className="size-4 accent-[#1b2559]"
+                    />
+                    <span className="truncate max-w-40">
+                      {s.page}. {s.heading ?? "časť"}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-slate font-semibold">Keď sa skúša len časť kapitoly, vyrob cvičenia len z nej.</p>
+            </div>
+          )}
+
           {sources.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
               <Button variant="primary" onClick={generate} loading={busy === "generate"} disabled={!ai || !!busy}>
@@ -377,99 +422,19 @@ export default function LessonEditor() {
           )}
           {busy === "generate" && <p className="text-sm text-slate font-semibold">AI pripravuje cvičenia, trvá to asi minútu…</p>}
         </Card>
+      ) : lesson ? (
+        <ExercisesTab
+          lesson={lesson}
+          slug={slug}
+          sources={sources}
+          exercises={exercises}
+          ai={ai}
+          reload={() => reload(lesson.id)}
+          onWantMore={() => setTab("material")}
+        />
       ) : (
-        <Card className="p-4 sm:p-5 space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-black mr-auto">Cvičenia ({exercises.length})</h2>
-            <select
-              value={adding ?? ""}
-              onChange={(e) => setAdding((e.target.value || null) as ExerciseType | null)}
-              aria-label="Pridať cvičenie typu"
-              className="h-9 rounded-xl border-2 border-line bg-card px-2 text-sm font-bold"
-            >
-              <option value="">Pridať cvičenie…</option>
-              {TYPES.map((t) => (
-                <option key={t.key} value={t.key}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {adding && lesson && (
-            <ExerciseForm
-              type={adding}
-              payload={emptyPayload(adding)}
-              concept=""
-              onCancel={() => setAdding(null)}
-              onSave={(p, c) => saveExercise(null, adding, p, c)}
-            />
-          )}
-
-          {exercises.length === 0 ? (
-            <p className="rounded-2xl bg-paper px-4 py-6 text-center text-slate">Zatiaľ žiadne cvičenia. Nahraj materiál a stlač „Generovať cvičenia“.</p>
-          ) : (
-            <ul className="divide-y divide-line" aria-label="Zoznam cvičení">
-              {exercises.map((e) =>
-                editing === e.id ? (
-                  <li key={e.id} className="py-3">
-                    <ExerciseForm
-                      type={e.type}
-                      payload={e.payload}
-                      concept={e.concept}
-                      onCancel={() => setEditing(null)}
-                      onSave={(p, c) => saveExercise(e.id, e.type, p, c)}
-                    />
-                  </li>
-                ) : (
-                  <li key={e.id} className={cx("py-3 flex items-start gap-3", !e.enabled && "opacity-60")}>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-md bg-sky-soft text-sky px-1.5 py-0.5 text-xs font-black">{typeLabel(e.type)}</span>
-                        {e.concept && <span className="rounded-md bg-paper text-slate px-1.5 py-0.5 text-xs font-bold">{e.concept}</span>}
-                        {e.level > 1 && (
-                          <span className="rounded-md bg-sun-soft text-sun-deep px-1.5 py-0.5 text-xs font-black">
-                            {e.level === 3 ? "záludné" : "náročnejšie"}
-                          </span>
-                        )}
-                      </div>
-                      <p className="font-bold mt-1 break-words">{preview(e.type, e.payload)}</p>
-                      <p className="text-sm text-slate break-words">{solution(e.type, e.payload)}</p>
-                    </div>
-                    <button
-                      type="button"
-                      aria-label={`${e.enabled ? "Vypnúť" : "Zapnúť"} cvičenie`}
-                      onClick={() => toggleExercise(e)}
-                      className="shrink-0 size-8 inline-flex items-center justify-center rounded-lg text-mist hover:text-ink hover:bg-ink/5"
-                    >
-                      {e.enabled ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Upraviť cvičenie: ${preview(e.type, e.payload).slice(0, 40)}`}
-                      onClick={() => setEditing(e.id)}
-                      className="shrink-0 size-8 inline-flex items-center justify-center rounded-lg text-slate hover:bg-ink/5"
-                    >
-                      <Pencil className="size-4" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Zmazať cvičenie: ${preview(e.type, e.payload).slice(0, 40)}`}
-                      onClick={() => removeExercise(e.id)}
-                      className="shrink-0 size-8 inline-flex items-center justify-center rounded-lg text-mist hover:text-tomato hover:bg-tomato-soft"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </li>
-                ),
-              )}
-            </ul>
-          )}
-          {exercises.length > 0 && (
-            <Button variant="outline" size="sm" onClick={() => setTab("material")}>
-              <Plus className="size-4" /> Vyrobiť ďalšie z materiálu
-            </Button>
-          )}
+        <Card className="p-4 sm:p-5">
+          <p className="rounded-2xl bg-paper px-4 py-6 text-center text-slate">Najprv ulož lekciu a nahraj materiál.</p>
         </Card>
       )}
     </div>

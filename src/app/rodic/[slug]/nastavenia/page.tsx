@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { Button, Card, ErrorNote, Spinner, Toggle } from "@/components/ui";
 import { subjectDef, type SubjectSlug } from "@/data/subjects";
 import { DEFAULT_CONFIG, LIMITS, loadConfig, saveConfig } from "@/lib/config";
-import { TYPES } from "@/lib/exercises";
+import { ASPECTS, TYPES } from "@/lib/exercises";
 import type { SubjectConfig } from "@/lib/types";
 
 function NumberBox({ value, onChange, limits, label }: { value: number; onChange: (n: number) => void; limits: readonly [number, number]; label: string }) {
@@ -45,8 +45,10 @@ export default function SubjectSettings() {
     setSaved(false);
   };
   const anyType = Object.values(cfg.types).some(Boolean);
+  const anyAspect = Object.values(cfg.aspects).some(Boolean);
   const invalid =
     !anyType ||
+    !anyAspect ||
     (["generateCount", "masteryStreak", "lowScore"] as const).some((k) => !Number.isInteger(cfg[k]) || cfg[k] < LIMITS[k][0] || cfg[k] > LIMITS[k][1]);
 
   async function save() {
@@ -80,6 +82,26 @@ export default function SubjectSettings() {
           <Toggle key={t.key} checked={cfg.types[t.key]} onChange={(v) => set("types", { ...cfg.types, [t.key]: v })} label={t.label} description={t.help} />
         ))}
         {!anyType && <ErrorNote>Aspoň jeden typ musí byť zapnutý.</ErrorNote>}
+      </Card>
+
+      <Card className="p-5 sm:p-6 space-y-4">
+        <div>
+          <h2 className="text-lg font-black">Čo sa skúša</h2>
+          <p className="text-sm text-slate mt-0.5">
+            Keď učiteľ niečo neskúša — najčastejšie letopočty — vypni to tu. Cvičenia ostanú uložené, len sa do tréningu nedostanú a dieťa
+            dostane oznam, že sa to učiť nemusí.
+          </p>
+        </div>
+        {ASPECTS.map((a) => (
+          <Toggle
+            key={a.key}
+            checked={cfg.aspects[a.key]}
+            onChange={(v) => set("aspects", { ...cfg.aspects, [a.key]: v })}
+            label={a.label}
+            description={a.hint}
+          />
+        ))}
+        {!anyAspect && <ErrorNote>Aspoň jedna časť učiva musí ostať zapnutá, inak nebude z čoho skúšať.</ErrorNote>}
       </Card>
 
       <Card className="p-5 sm:p-6 space-y-5">
