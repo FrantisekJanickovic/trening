@@ -4,12 +4,13 @@ import { ChevronRight, X } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { PLAYERS } from "@/components/exercise/players";
+import { FontSize, fontScaleStyle, readFontStep, saveFontStep, type FontStep } from "@/components/font-size";
 import { Button, Card, ErrorNote, Spinner, cx } from "@/components/ui";
 import { subjectDef, type SubjectSlug } from "@/data/subjects";
 import { cheer } from "@/lib/cheer";
 import { loadConfig } from "@/lib/config";
-import { getChild, loadExercises, loadProgress, loadSourcesFor } from "@/lib/data";
-import { explainOf, isCorrect, preview, solution, typeLabel, type Answer } from "@/lib/exercises";
+import { getChild, loadExercises, loadProgress, loadSets, loadSourcesFor } from "@/lib/data";
+import { explainOf, isCorrect, preview, solutionLines, typeLabel, type Answer } from "@/lib/exercises";
 import { decodePages, filterByPages } from "@/lib/pages";
 import { buildPlan, COUNTS } from "@/lib/plan";
 import { progressUpdates, type Tally } from "@/lib/progress";
@@ -28,8 +29,9 @@ export default function Runner() {
   const count = COUNTS.includes(Number(params.get("count"))) ? Number(params.get("count")) : 15;
   const mode = params.get("mode") === "focus" ? "focus" : "normal";
   const pages = params.get("pages") ?? "";
-  const sig = `${childId}|${lessons.join(",")}|${pages}|${count}|${mode}|${params.get("t") ?? ""}`;
-  return <Session key={sig} slug={slug} childId={childId} lessonIds={lessons} pages={pages} count={count} mode={mode} />;
+  const set = params.get("set") ?? "";
+  const sig = `${childId}|${lessons.join(",")}|${pages}|${set}|${count}|${mode}|${params.get("t") ?? ""}`;
+  return <Session key={sig} slug={slug} childId={childId} lessonIds={lessons} pages={pages} setId={set} count={count} mode={mode} />;
 }
 
 function Session({
@@ -37,6 +39,7 @@ function Session({
   childId,
   lessonIds,
   pages,
+  setId,
   count,
   mode,
 }: {
@@ -44,6 +47,7 @@ function Session({
   childId: string;
   lessonIds: string[];
   pages: string;
+  setId: string;
   count: number;
   mode: "normal" | "focus";
 }) {
@@ -59,22 +63,34 @@ function Session({
     let off = false;
     (async () => {
       const ids = key.split(",").filter(Boolean);
-      const [child, config, exercises, sources] = await Promise.all([getChild(childId), loadConfig(slug), loadExercises(ids, true), loadSourcesFor(ids)]);
+      const [child, config, exercises, sources, sets] = await Promise.all([
+        getChild(childId),
+        loadConfig(slug),
+        loadExercises(ids, true),
+        loadSourcesFor(ids),
+        setId ? loadSets(ids, true) : Promise.resolve([]),
+      ]);
       if (!child) throw new Error("Profil sa nenašiel.");
-      const inScope = filterByPages(exercises, sources, decodePages(pages, ids));
-      const allowed = inScope.filter((e) => config.types[e.type]);
+      // sada má prednosť pred výberom strán: rodič ňou presne určil, čo sa skúša
+      const chosen = setId ? sets.find((x) => x.id === setId) : undefined;
+      if (setId && !chosen) throw new Error("Táto sada už neexistuje.");
+      const inScope = chosen ? exercises.filter((e) => chosen.exercise_ids.includes(e.id)) : filterByPages(exercises, sources, decodePages(pages, ids));
+      const allowed = inScope.filter((e) => config.types[e.type] && config.aspects[e.aspect] !== false);
       const progress = await loadProgress(
         childId,
         allowed.map((e) => e.id),
       );
       const plan = buildPlan({ exercises: allowed, progress, count, focus: mode === "focus" });
-      if (!plan.length) throw new Error(mode === "focus" ? "Nemáš žiadne chyby na opakovanie." : "Pre vybrané strany zatiaľ nie sú cvičenia.");
+      if (!plan.length)
+        throw new Error(
+          mode === "focus" ? "Nemáš žiadne chyby na opakovanie." : chosen ? "V tejto sade zatiaľ nie sú cvičenia." : "Pre vybrané strany zatiaľ nie sú cvičenia.",
+        );
       if (!off) setData({ child, config, plan, progress, lessonIds: ids });
     })().catch((e) => setError(e instanceof Error ? e.message : "Tréning sa nepodarilo pripraviť."));
     return () => {
       off = true;
     };
-  }, [slug, childId, key, pages, count, mode, run]);
+  }, [slug, childId, key, pages, setId, count, mode, run]);
 
   if (error)
     return (
@@ -118,6 +134,12 @@ function Training({
   const [bubble, setBubble] = useState<string | null>(config.encouragement ? cheer.start(child.name) : null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [font, setFontState] = useState<FontStep>(0);
+  useEffect(() => setFontState(readFontStep()), []);
+  const setFont = (s: FontStep) => {
+    setFontState(s);
+    saveFontStep(s);
+  };
   const results = useRef(new Map<string, boolean>());
   const streak = useRef(0);
   const startedAt = useRef(0);
@@ -267,6 +289,7 @@ function Training({
         <span className="text-sm font-black text-slate tabular-nums">
           {idx}/{plan.length}
         </span>
+        <FontSize step={font} onChange={setFont} />
       </header>
 
       <div className="min-h-14 flex items-center gap-2 mt-3" aria-live="polite">
@@ -288,14 +311,21 @@ function Training({
 
       <p className="text-center text-sm font-bold text-mist mt-1">{typeLabel(ex.type)}</p>
 
-      <div className="flex-1 flex flex-col gap-4 py-3">
+      <div className="flex-1 flex flex-col gap-4 py-3 ex-zoom" style={fontScaleStyle(font)}>
         <Player key={ex.id} payload={ex.payload} done={!!answer} onSubmit={submit} />
 
         {answer && (
           <div className="space-y-3 anim-rise">
             {!answer.correct && (
               <Card className="px-4 py-3 border-2 border-tomato/40 bg-tomato-soft">
-                <p className="text-base font-black text-tomato">Správne je: {solution(ex.type, ex.payload)}</p>
+                <p className="text-sm font-black text-tomato uppercase tracking-wide">Správne je</p>
+                <ul className="mt-1 space-y-1">
+                  {solutionLines(ex.type, ex.payload).map((line, i) => (
+                    <li key={i} className="text-base font-black text-tomato leading-snug">
+                      {line}
+                    </li>
+                  ))}
+                </ul>
               </Card>
             )}
             {explain && <p className="text-base font-semibold text-slate text-center">{explain}</p>}

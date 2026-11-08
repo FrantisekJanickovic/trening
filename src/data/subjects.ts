@@ -2,7 +2,7 @@
  * Predmety. Pridať ďalší predmet znamená pridať sem položku a riadok do tabuľky tr_subjects;
  * engine (import, generovanie, tréning, chyby, história) ostáva nezmenený.
  */
-export type SubjectSlug = "dejepis" | "geografia" | "chemia" | "biologia";
+export type SubjectSlug = "dejepis" | "geografia" | "chemia" | "biologia" | "vlastiveda";
 
 export type SubjectDef = {
   slug: SubjectSlug;
@@ -36,6 +36,12 @@ export const SUBJECTS: SubjectDef[] = [
     name: "Biológia",
     icon: "🌿",
     hint: "Dôležité sú stavba a funkcia orgánov, zaraďovanie organizmov do skupín, procesy ako fotosyntéza a dýchanie, odborné pojmy a ich význam.",
+  },
+  {
+    slug: "vlastiveda",
+    name: "Vlastiveda",
+    icon: "🧭",
+    hint: "Učivo mieša poznatky o Slovensku, prírode a dejinách pre mladšie deti. Dôležité sú kraje, mestá, rieky a pohoria, významné osobnosti a povesti, tradície a sviatky, orientácia v krajine a na mape, svetové strany. Otázky stavaj z toho, čo dieťa pozná zo svojho okolia, a jazyk drž jednoduchý.",
   },
 ];
 

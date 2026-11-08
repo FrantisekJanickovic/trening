@@ -3,32 +3,42 @@
 import { Download, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button, cx } from "@/components/ui";
-import { PAGES, downloadPdf, render, type MindMapData, type PageFormat } from "@/lib/mindmap";
+import { isMindmap, render as renderMap, type MindMapData } from "@/lib/mindmap";
+import { PAGES, downloadPdf, type PageFormat } from "@/lib/paper";
+import { render as renderTimeline, type TimelineData } from "@/lib/timeline";
+
+export type Aid = MindMapData | TimelineData;
+
+/** Mapa a os sa kreslia inak, ale ukazujú a tlačia rovnako. */
+const draw = (canvas: HTMLCanvasElement, data: Aid, px: { w: number; h: number }, caption?: string) =>
+  isMindmap(data) ? renderMap(canvas, data, px, caption) : renderTimeline(canvas, data as TimelineData, px, caption);
+
+const label = (data: Aid) => (isMindmap(data) ? `Myšlienková mapa: ${data.center}` : `Časová os: ${(data as TimelineData).title}`);
 
 /**
- * Náhľad mapy v pomere A4 na šírku, aby bolo vidno presne to, čo sa vytlačí.
- * Kreslí sa do canvasu, takže text používa rovnaké písmo ako zvyšok appky.
+ * Náhľad v pomere A4 na šírku, aby bolo vidno presne to, čo sa vytlačí.
+ * Kreslí sa do canvasu, takže text používa rovnaké písmo ako appka.
  */
-export function MindmapCanvas({ data, caption, className }: { data: MindMapData; caption?: string; className?: string }) {
+export function MindmapCanvas({ data, caption, className }: { data: Aid; caption?: string; className?: string }) {
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     let off = false;
-    const draw = () => {
+    const paint = () => {
       const el = box.current;
       const cv = canvas.current;
       if (off || !el || !cv) return;
       const w = Math.max(320, el.clientWidth);
       const h = Math.round((w * PAGES.a4.h) / PAGES.a4.w);
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      render(cv, data, { w: w * dpr, h: h * dpr }, caption);
+      draw(cv, data, { w: w * dpr, h: h * dpr }, caption);
       cv.style.width = `${w}px`;
       cv.style.height = `${h}px`;
     };
-    draw();
-    void document.fonts?.ready.then(draw);
-    const ro = new ResizeObserver(draw);
+    paint();
+    void document.fonts?.ready.then(paint);
+    const ro = new ResizeObserver(paint);
     if (box.current) ro.observe(box.current);
     return () => {
       off = true;
@@ -38,13 +48,13 @@ export function MindmapCanvas({ data, caption, className }: { data: MindMapData;
 
   return (
     <div ref={box} className={cx("w-full", className)}>
-      <canvas ref={canvas} className="w-full rounded-xl border border-line bg-white" role="img" aria-label={`Myšlienková mapa: ${data.center}`} />
+      <canvas ref={canvas} className="w-full rounded-xl border border-line bg-white" role="img" aria-label={label(data)} />
     </div>
   );
 }
 
-/** Dve tlačidlá na stiahnutie — jediné, čo z mapy potrebuje dieťa. */
-export function MapDownloads({ data, caption, name, size = "sm" }: { data: MindMapData; caption: string; name: string; size?: "sm" | "md" | "lg" }) {
+/** Dve tlačidlá na stiahnutie — jediné, čo z pomôcky potrebuje dieťa. */
+export function MapDownloads({ data, caption, name, size = "sm" }: { data: Aid; caption: string; name: string; size?: "sm" | "md" | "lg" }) {
   const [busy, setBusy] = useState<PageFormat | null>(null);
   const [error, setError] = useState(false);
 
@@ -52,7 +62,7 @@ export function MapDownloads({ data, caption, name, size = "sm" }: { data: MindM
     setBusy(format);
     setError(false);
     try {
-      await downloadPdf(data, format, caption, name);
+      await downloadPdf((canvas, px) => draw(canvas, data, px, caption), format, name);
     } catch {
       setError(true);
     } finally {
@@ -72,8 +82,8 @@ export function MapDownloads({ data, caption, name, size = "sm" }: { data: MindM
   );
 }
 
-/** Mapa cez celú obrazovku — na malom displeji je to jediný spôsob, ako si ju poriadne pozrieť. */
-export function MindmapOverlay({ data, caption, name, onClose }: { data: MindMapData; caption: string; name: string; onClose: () => void }) {
+/** Pomôcka cez celú obrazovku — na malom displeji je to jediný spôsob, ako si ju poriadne pozrieť. */
+export function MindmapOverlay({ data, caption, name, onClose }: { data: Aid; caption: string; name: string; onClose: () => void }) {
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", esc);
@@ -85,22 +95,17 @@ export function MindmapOverlay({ data, caption, name, onClose }: { data: MindMap
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-ink/70 p-3 sm:p-6 overflow-auto" role="dialog" aria-modal="true" aria-label={`Myšlienková mapa: ${data.center}`}>
+    <div className="fixed inset-0 z-50 bg-ink/70 p-3 sm:p-6 overflow-auto" role="dialog" aria-modal="true" aria-label={label(data)}>
       <div className="mx-auto max-w-6xl rounded-2xl bg-card p-3 sm:p-4">
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <p className="font-black mr-auto truncate">{caption}</p>
           <MapDownloads data={data} caption={caption} name={name} />
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Zavrieť mapu"
-            className="size-9 inline-flex items-center justify-center rounded-xl text-slate hover:bg-ink/5"
-          >
+          <button type="button" onClick={onClose} aria-label="Zavrieť" className="size-9 inline-flex items-center justify-center rounded-xl text-slate hover:bg-ink/5">
             <X className="size-5" />
           </button>
         </div>
         <MindmapCanvas data={data} caption={caption} />
-        <p className="text-xs text-slate font-semibold mt-2">Na telefóne si mapu otoč na šírku, alebo si ju stiahni a pozri na väčšej obrazovke.</p>
+        <p className="text-xs text-slate font-semibold mt-2">Na telefóne si to otoč na šírku, alebo si to stiahni a pozri na väčšej obrazovke.</p>
       </div>
     </div>
   );

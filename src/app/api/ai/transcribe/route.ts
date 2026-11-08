@@ -9,7 +9,10 @@ export async function GET(req: Request) {
   return Response.json({ ai: aiConfigured(), model: aiConfigured() ? aiModel() : null });
 }
 
-type Raw = { title?: unknown; sections?: { heading?: unknown; text?: unknown }[] };
+type Raw = { title?: unknown; sections?: { heading?: unknown; text?: unknown }[]; figures?: unknown };
+
+/** Obrázok nájdený na strane: kde je, čo k nemu píše kniha a vysvetlenie navyše. */
+export type FigureOut = { box: [number, number, number, number]; caption: string; explain: string };
 
 const SCHEMA = {
   type: "object",
@@ -26,8 +29,25 @@ const SCHEMA = {
         required: ["heading", "text"],
       },
     },
+    figures: {
+      type: "array",
+      description: "obrázky, mapy, schémy a tabuľky na strane; prázdne, keď tam žiadne nie sú",
+      items: {
+        type: "object",
+        properties: {
+          box: {
+            type: "array",
+            description: "orámovanie obrázka ako [vľavo, hore, vpravo, dole] v podieloch šírky a výšky strany, od 0 po 1",
+            items: { type: "number" },
+          },
+          caption: { type: "string", description: "popis spod obrázka tak, ako je vytlačený; prázdne, keď tam nie je" },
+          explain: { type: "string", description: "vlastné dovysvetlenie, čo je na obrázku vidieť a prečo je dôležitý" },
+        },
+        required: ["box", "caption", "explain"],
+      },
+    },
   },
-  required: ["title", "sections"],
+  required: ["title", "sections", "figures"],
 };
 
 const system = (subject: string, grade: number | null) => {
@@ -43,6 +63,12 @@ Pravidlá:
 - Popisky obrázkov a máp prepíš tiež, do vlastnej časti, a pred text dopíš „Obrázok: “.
 - Vynechaj čísla strán, hlavičky, pätky a otázky na opakovanie bez odpovedí.
 - Ak je strana nečitateľná, vráť prázdny zoznam častí.
+
+Okrem textu nájdi na strane obrázky, mapy, schémy a tabuľky a pre každý vráť položku vo "figures":
+- "box" je orámovanie obrázka v podieloch strany: [vľavo, hore, vpravo, dole], kde 0 je ľavý horný roh a 1 pravý dolný. Rámuj celý obrázok aj s popisom pod ním, radšej o kúsok širšie než tesne.
+- "caption" je popis spod obrázka presne tak, ako je vytlačený. Keď tam popis nie je, nechaj prázdne.
+- "explain" je tvoje vlastné dovysvetlenie v dvoch až troch vetách: čo je na obrázku vidieť a prečo je dôležitý. Píš ho jednoduchšie, ako je zvyšok strany${grade && grade > 1 ? `, zrozumiteľne pre dieťa z ${grade - 1}. ročníka` : ""} — dieťa si ho číta samo, keď textu nerozumie.
+- Ozdobné rámčeky, logá a fotky bez výpovednej hodnoty vynechaj.
 ${def ? `\nNa čo si dať pozor v tomto predmete: ${def.hint}` : ""}`;
 };
 
@@ -78,11 +104,31 @@ export async function POST(req: Request) {
           .slice(0, 8000),
       }))
       .filter((s) => s.text);
+
+    // Súradnice od modelu bývajú občas mimo; čo sa nedá orezať, radšej zahodíme,
+    // než by sme do galérie dali výrez cez pol strany alebo prázdny prúžok.
+    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : NaN);
+    const figures: FigureOut[] = [];
+    for (const f of Array.isArray(raw.figures) ? raw.figures : []) {
+      if (figures.length >= 8) break;
+      const o = (f ?? {}) as { box?: unknown; caption?: unknown; explain?: unknown };
+      const b = (Array.isArray(o.box) ? o.box : []).map(num);
+      if (b.length !== 4 || b.some(Number.isNaN)) continue;
+      const [x0, y0, x1, y1] = [Math.min(b[0], b[2]), Math.min(b[1], b[3]), Math.max(b[0], b[2]), Math.max(b[1], b[3])];
+      if (x1 - x0 < 0.08 || y1 - y0 < 0.06) continue;
+      figures.push({
+        box: [x0, y0, x1, y1],
+        caption: String(o.caption ?? "").trim().slice(0, 400),
+        explain: String(o.explain ?? "").trim().slice(0, 700),
+      });
+    }
+
     return Response.json({
       title: String(raw.title ?? "")
         .trim()
         .slice(0, 160),
       sections,
+      figures,
     });
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message : "AI zlyhala." }, { status: 502 });

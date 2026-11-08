@@ -3,7 +3,7 @@
 import type { SubjectSlug } from "@/data/subjects";
 import type { ExerciseType, Payload } from "./exercises";
 import { supabase } from "./supabase";
-import type { Child, Exercise, Lesson, LessonWithCounts, Mindmap, Notification, Progress, SessionRow, Source, Subject } from "./types";
+import type { Child, Exercise, ExerciseSet, Figure, Lesson, LessonWithCounts, Mindmap, Notification, Progress, SessionRow, Source, Subject } from "./types";
 
 export async function listChildren(): Promise<Child[]> {
   const { data, error } = await supabase().from("children").select("id, name, avatar, grade").order("created_at");
@@ -51,6 +51,22 @@ export async function loadSourcesFor(lessonIds: string[]): Promise<Source[]> {
   const { data, error } = await supabase().from("tr_sources").select("*").in("lesson_id", lessonIds).order("position").limit(2000);
   if (error) throw error;
   return (data ?? []) as Source[];
+}
+
+export async function loadFigures(lessonIds: string[]): Promise<Figure[]> {
+  if (!lessonIds.length) return [];
+  const { data, error } = await supabase().from("tr_figures").select("*").in("lesson_id", lessonIds).order("position").limit(400);
+  if (error) throw error;
+  return (data ?? []) as Figure[];
+}
+
+export async function loadSets(lessonIds: string[], onlyActive = false): Promise<ExerciseSet[]> {
+  if (!lessonIds.length) return [];
+  let q = supabase().from("tr_sets").select("*").in("lesson_id", lessonIds).order("position").limit(200);
+  if (onlyActive) q = q.eq("active", true);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as ExerciseSet[];
 }
 
 export async function loadMindmaps(lessonIds: string[], onlyActive = false): Promise<Mindmap[]> {
