@@ -5,10 +5,15 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Card, Spinner } from "@/components/ui";
+import { isVerbSubject } from "@/data/subjects";
 import { loadConfigs } from "@/lib/config";
-import { getChild, loadLessons, loadSubjects } from "@/lib/data";
+import { getChild, loadLessons, loadSubjects, loadVerbs } from "@/lib/data";
 import { getLockedChild } from "@/lib/device";
 import type { Child, Subject, SubjectConfig } from "@/lib/types";
+
+/** Pri slovesách sa počítajú slovesá, pri ostatných predmetoch lekcie. */
+const countLabel = (slug: string, n: number) =>
+  isVerbSubject(slug) ? `${n} ${n === 1 ? "sloveso" : n < 5 ? "slovesá" : "slovies"}` : `${n} ${n === 1 ? "lekcia" : n < 5 ? "lekcie" : "lekcií"}`;
 
 export default function SubjectPicker() {
   const childId = useSearchParams().get("child") ?? "";
@@ -25,7 +30,13 @@ export default function SubjectPicker() {
       setSubjects(subs);
       setConfigs(cfgs);
       const on = subs.filter((s) => cfgs[s.slug]?.enabled);
-      const pairs = await Promise.all(on.map(async (s) => [s.slug, (await loadLessons(s.slug)).filter((l) => l.exercises > 0).length] as const));
+      const pairs = await Promise.all(
+        on.map(async (s) =>
+          isVerbSubject(s.slug)
+            ? ([s.slug, (await loadVerbs()).filter((v) => v.enabled).length] as const)
+            : ([s.slug, (await loadLessons(s.slug)).filter((l) => l.exercises > 0).length] as const),
+        ),
+      );
       setCounts(Object.fromEntries(pairs));
     })().catch(() => setSubjects([]));
   }, [childId]);
@@ -69,9 +80,7 @@ export default function SubjectPicker() {
             >
               <span className="text-5xl leading-none">{s.icon}</span>
               <span className="text-xl font-black">{s.name}</span>
-              <span className="text-sm text-slate font-semibold">
-                {counts[s.slug] ?? 0} {(counts[s.slug] ?? 0) === 1 ? "lekcia" : (counts[s.slug] ?? 0) < 5 ? "lekcie" : "lekcií"}
-              </span>
+              <span className="text-sm text-slate font-semibold">{countLabel(s.slug, counts[s.slug] ?? 0)}</span>
             </Link>
           ))}
         </div>

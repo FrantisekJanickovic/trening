@@ -134,6 +134,23 @@ export const ASPECTS: { key: Aspect; label: string; hint: string; skip: string }
 ];
 
 export const ASPECT_KEYS = ASPECTS.map((a) => a.key);
+
+/**
+ * Ako sa v tréningu zaobchádza s letopočtami. Učiteľ ich buď skúša, alebo nie,
+ * a niekedy sa dieťa potrebuje dobiť práve ony — preto tri režimy, nie vypínač.
+ */
+export type YearsMode = "vsetko" | "bez" | "len";
+
+export const YEARS_MODES: { value: YearsMode; label: string; hint: string; note: string | null }[] = [
+  { value: "vsetko", label: "Všetko", hint: "letopočty aj zvyšok učiva", note: null },
+  { value: "bez", label: "Bez letopočtov", hint: "otázky na roky a dátumy vynechá", note: "Letopočty sa učiť nemusíš." },
+  { value: "len", label: "Len letopočty", hint: "skúša iba roky a dátumy", note: "Teraz sa učíš len letopočty." },
+];
+
+export const yearsModeDef = (m: string) => YEARS_MODES.find((x) => x.value === m) ?? YEARS_MODES[0];
+
+/** Prejde cvičenie cez zvolený režim letopočtov? */
+export const matchesYears = (aspect: Aspect, mode: YearsMode) => (mode === "vsetko" ? true : mode === "len" ? aspect === "roky" : aspect !== "roky");
 export const aspectDef = (a: string) => ASPECTS.find((x) => x.key === a);
 export const isAspect = (v: unknown): v is Aspect => typeof v === "string" && (ASPECT_KEYS as string[]).includes(v);
 

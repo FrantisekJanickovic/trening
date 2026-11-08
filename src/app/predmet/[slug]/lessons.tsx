@@ -10,7 +10,7 @@ import { Button, Card, Spinner, buttonClass, cx } from "@/components/ui";
 import { subjectDef, type SubjectSlug } from "@/data/subjects";
 import { loadConfig } from "@/lib/config";
 import { getChild, loadExercises, loadFigures, loadLessons, loadMindmaps, loadProgress, loadSets, loadSourcesFor } from "@/lib/data";
-import { ASPECTS } from "@/lib/exercises";
+import { matchesYears, yearsModeDef } from "@/lib/exercises";
 import { describePages, encodePages, filterByPages, pagesOf, type Selection } from "@/lib/pages";
 import { COUNTS } from "@/lib/plan";
 import type { Child, Exercise, ExerciseSet, LessonWithCounts, Mindmap, Progress, Source, SubjectConfig } from "@/lib/types";
@@ -76,15 +76,15 @@ export default function LessonPicker() {
   const inScope = useMemo(
     () =>
       filterByPages(
-        exercises.filter((e) => picked.includes(e.lesson_id) && (!config || config.aspects[e.aspect] !== false)),
+        exercises.filter((e) => picked.includes(e.lesson_id) && (!config || matchesYears(e.aspect, config.years))),
         sources,
         pageSel,
       ),
     [exercises, sources, picked, pageSel, config],
   );
 
-  /** Čo rodič vypol — dieťa to má vedieť dopredu, nie sa to dohadovať. */
-  const skipped = ASPECTS.filter((a) => config && config.aspects[a.key] === false);
+  /** Čo rodič nastavil — dieťa to má vedieť dopredu, nie sa to dohadovať. */
+  const yearsNote = config ? yearsModeDef(config.years).note : null;
 
   const open = useMemo(() => {
     const ids = new Set(progress.filter((p) => !p.mastered && p.wrong_count > 0).map((p) => p.exercise_id));
@@ -224,11 +224,7 @@ export default function LessonPicker() {
                 </option>
               ))}
             </select>
-            {skipped.length > 0 && (
-              <p className="mt-3 rounded-2xl bg-sky-soft text-sky px-3.5 py-2.5 text-sm font-bold">
-                {skipped.map((a) => a.skip).join(" ")}
-              </p>
-            )}
+            {yearsNote && <p className="mt-3 rounded-2xl bg-sky-soft text-sky px-3.5 py-2.5 text-sm font-bold">{yearsNote}</p>}
             {picked.length > 0 && available < count && (
               <p className="text-sm text-slate font-semibold mt-2">Pre tento výber je pripravených {available} cvičení, tréning ich bude mať toľko.</p>
             )}

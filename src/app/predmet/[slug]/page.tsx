@@ -1,13 +1,13 @@
 import { Suspense } from "react";
 import { RequireAuth } from "@/components/auth";
 import { Spinner } from "@/components/ui";
-import LessonPicker from "./lessons";
+import PickerSwitch from "./switch";
 
 export default function Page() {
   return (
     <Suspense fallback={<Spinner />}>
       <RequireAuth>
-        <LessonPicker />
+        <PickerSwitch />
       </RequireAuth>
     </Suspense>
   );

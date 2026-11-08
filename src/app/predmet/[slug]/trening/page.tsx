@@ -1,13 +1,13 @@
 import { Suspense } from "react";
 import { RequireAuth } from "@/components/auth";
 import { Spinner } from "@/components/ui";
-import Runner from "./runner";
+import RunnerSwitch from "./switch";
 
 export default function Page() {
   return (
     <Suspense fallback={<Spinner />}>
       <RequireAuth>
-        <Runner />
+        <RunnerSwitch />
       </RequireAuth>
     </Suspense>
   );

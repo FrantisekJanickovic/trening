@@ -5,12 +5,19 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Card, Spinner, buttonClass } from "@/components/ui";
-import { GRADES, gradeLabel, subjectDef, type SubjectSlug } from "@/data/subjects";
+import { GRADES, gradeLabel, isVerbSubject, subjectDef, type SubjectSlug } from "@/data/subjects";
 import { loadLessons } from "@/lib/data";
 import type { LessonWithCounts } from "@/lib/types";
+import VerbsAdmin from "./verbs";
 
-export default function SubjectLessons() {
+export default function SubjectPage() {
   const slug = String(useParams().slug) as SubjectSlug;
+  // slovesá nemajú lekcie, ale jeden očíslovaný zoznam — majú vlastnú správu
+  if (isVerbSubject(slug)) return <VerbsAdmin slug={slug} />;
+  return <SubjectLessons slug={slug} />;
+}
+
+function SubjectLessons({ slug }: { slug: SubjectSlug }) {
   const def = subjectDef(slug);
   const [lessons, setLessons] = useState<LessonWithCounts[] | null>(null);
 

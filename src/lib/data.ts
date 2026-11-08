@@ -4,6 +4,7 @@ import type { SubjectSlug } from "@/data/subjects";
 import type { ExerciseType, Payload } from "./exercises";
 import { supabase } from "./supabase";
 import type { Child, Exercise, ExerciseSet, Figure, Lesson, LessonWithCounts, Mindmap, Notification, Progress, SessionRow, Source, Subject } from "./types";
+import type { Verb } from "./verbs";
 
 export async function listChildren(): Promise<Child[]> {
   const { data, error } = await supabase().from("children").select("id, name, avatar, grade").order("created_at");
@@ -51,6 +52,12 @@ export async function loadSourcesFor(lessonIds: string[]): Promise<Source[]> {
   const { data, error } = await supabase().from("tr_sources").select("*").in("lesson_id", lessonIds).order("position").limit(2000);
   if (error) throw error;
   return (data ?? []) as Source[];
+}
+
+export async function loadVerbs(): Promise<Verb[]> {
+  const { data, error } = await supabase().from("tr_verbs").select("*").order("num").limit(1000);
+  if (error) throw error;
+  return (data ?? []) as Verb[];
 }
 
 export async function loadFigures(lessonIds: string[]): Promise<Figure[]> {

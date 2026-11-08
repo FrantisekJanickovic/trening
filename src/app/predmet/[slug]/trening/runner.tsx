@@ -10,7 +10,7 @@ import { subjectDef, type SubjectSlug } from "@/data/subjects";
 import { cheer } from "@/lib/cheer";
 import { loadConfig } from "@/lib/config";
 import { getChild, loadExercises, loadProgress, loadSets, loadSourcesFor } from "@/lib/data";
-import { explainOf, isCorrect, preview, solutionLines, typeLabel, type Answer } from "@/lib/exercises";
+import { explainOf, isCorrect, matchesYears, preview, solutionLines, typeLabel, type Answer } from "@/lib/exercises";
 import { decodePages, filterByPages } from "@/lib/pages";
 import { buildPlan, COUNTS } from "@/lib/plan";
 import { progressUpdates, type Tally } from "@/lib/progress";
@@ -75,7 +75,7 @@ function Session({
       const chosen = setId ? sets.find((x) => x.id === setId) : undefined;
       if (setId && !chosen) throw new Error("Táto sada už neexistuje.");
       const inScope = chosen ? exercises.filter((e) => chosen.exercise_ids.includes(e.id)) : filterByPages(exercises, sources, decodePages(pages, ids));
-      const allowed = inScope.filter((e) => config.types[e.type] && config.aspects[e.aspect] !== false);
+      const allowed = inScope.filter((e) => config.types[e.type] && matchesYears(e.aspect, config.years));
       const progress = await loadProgress(
         childId,
         allowed.map((e) => e.id),

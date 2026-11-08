@@ -128,8 +128,15 @@ export default function LessonEditor() {
       const item = items[i];
       setQueue((q) => q.map((x) => (x.key === item.key ? { ...x, state: "reading" } : x)));
       try {
-        const img = await toJpegBase64(files[i]);
-        const t = await transcribe(img, slug, lessonRow.grade);
+        let img = await toJpegBase64(files[i]);
+        let t = await transcribe(img, slug, lessonRow.grade);
+        // strana odfotená nabok alebo hore nohami: otočíme ju a prečítame znova,
+        // inak by nesedeli súradnice obrázkov a prepis býva horší
+        if (t.rotation) {
+          setQueue((q) => q.map((x) => (x.key === item.key ? { ...x, note: "otáčam…" } : x)));
+          img = await toJpegBase64(files[i], 2000, t.rotation);
+          t = await transcribe(img, slug, lessonRow.grade);
+        }
         if (!t.sections.length) throw new Error("Zo strany sa nepodarilo nič prečítať.");
         const base = Math.max(0, ...sources.map((s) => s.position), -1) + 1;
         const rows = t.sections.map((s, j) => ({ lesson_id: lessonRow.id, page, heading: s.heading || null, text: s.text, position: base + i * 100 + j }));
@@ -139,7 +146,7 @@ export default function LessonEditor() {
         // obrázky zo strany idú do galérie; keď sa to nepodarí, prepis textu tým netrpí
         let figNote = "";
         try {
-          const crops = await cropFigures(files[i], t.figures ?? []);
+          const crops = await cropFigures(img.blob, t.figures ?? []);
           if (crops.length) {
             const n = await saveFigures(lessonRow.id, (inserted ?? [])[0]?.id ?? null, page, crops, Date.now());
             setFigureCount((c) => c + n);

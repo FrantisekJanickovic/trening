@@ -1,9 +1,9 @@
 import type { SubjectSlug } from "@/data/subjects";
-import type { Aspect, ExerciseType, Payload } from "./exercises";
+import type { Aspect, ExerciseType, Payload, YearsMode } from "./exercises";
 import type { MindMapData } from "./mindmap";
 import type { TimelineData } from "./timeline";
 
-export type { SubjectSlug, Aspect, ExerciseType, Payload, MindMapData, TimelineData };
+export type { SubjectSlug, Aspect, YearsMode, ExerciseType, Payload, MindMapData, TimelineData };
 
 export type Child = { id: string; name: string; avatar: string; grade: number };
 
@@ -133,8 +133,8 @@ export type SubjectConfig = {
   enabled: boolean;
   /** ktoré typy cvičení sa generujú a trénujú */
   types: Record<ExerciseType, boolean>;
-  /** ktoré časti učiva sa skúšajú; vypnuté sa do tréningu nedostanú */
-  aspects: Record<Aspect, boolean>;
+  /** čo sa z učiva skúša vzhľadom na letopočty */
+  years: YearsMode;
   /** koľko cvičení vyrobiť z jedného materiálu */
   generateCount: number;
   /** koľko správnych odpovedí za sebou znamená zvládnuté */
