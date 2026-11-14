@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Card, Spinner } from "@/components/ui";
-import { isVerbSubject } from "@/data/subjects";
+import { isEnglishSubject, isVerbSubject } from "@/data/subjects";
 import { loadConfigs } from "@/lib/config";
 import { getChild, loadLessons, loadSubjects, loadVerbs } from "@/lib/data";
+import { countLessons as countEnglishLessons } from "@/lib/en/data";
 import { getLockedChild } from "@/lib/device";
 import type { Child, Subject, SubjectConfig } from "@/lib/types";
 
@@ -34,7 +35,9 @@ export default function SubjectPicker() {
         on.map(async (s) =>
           isVerbSubject(s.slug)
             ? ([s.slug, (await loadVerbs()).filter((v) => v.enabled).length] as const)
-            : ([s.slug, (await loadLessons(s.slug)).filter((l) => l.exercises > 0).length] as const),
+            : isEnglishSubject(s.slug)
+              ? ([s.slug, await countEnglishLessons()] as const)
+              : ([s.slug, (await loadLessons(s.slug)).filter((l) => l.exercises > 0).length] as const),
         ),
       );
       setCounts(Object.fromEntries(pairs));

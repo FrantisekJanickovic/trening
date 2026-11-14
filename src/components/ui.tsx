@@ -104,14 +104,24 @@ export function Toggle({
   onChange,
   label,
   description,
+  ariaLabel,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: ReactNode;
   description?: ReactNode;
+  /** stály názov prepínača; popisok sa mení so stavom, tak sa naň nedá spoľahnúť */
+  ariaLabel?: string;
 }) {
   return (
-    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className="flex w-full items-start gap-3 text-left py-2">
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      onClick={() => onChange(!checked)}
+      className="flex w-full items-start gap-3 text-left py-2"
+    >
       <span className={cx("mt-0.5 relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors", checked ? "bg-leaf" : "bg-line")}>
         <span className={cx("absolute top-1 left-1 size-5 rounded-full bg-white shadow transition-transform", checked && "translate-x-5")} />
       </span>
