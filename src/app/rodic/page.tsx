@@ -4,16 +4,17 @@ import { BookOpen, Pencil, Plus, Settings } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card, Spinner, Toggle, buttonClass, cx } from "@/components/ui";
-import { isVerbSubject } from "@/data/subjects";
+import { isEnglishSubject, isVerbSubject } from "@/data/subjects";
 import { loadConfigs, mergeConfig, saveConfig } from "@/lib/config";
 import { listChildren, loadLessons, loadSessions, loadSubjects, loadVerbs } from "@/lib/data";
+import { countLessons as countEnglishLessons } from "@/lib/en/data";
 import type { Child, SessionRow, Subject, SubjectConfig } from "@/lib/types";
 
 export default function Overview() {
   const [children, setChildren] = useState<Child[] | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [configs, setConfigs] = useState<Record<string, SubjectConfig>>({});
-  const [counts, setCounts] = useState<Record<string, { lessons?: number; exercises?: number; verbs?: number }>>({});
+  const [counts, setCounts] = useState<Record<string, { lessons?: number; exercises?: number | null; verbs?: number }>>({});
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -28,6 +29,8 @@ export default function Overview() {
         subs.map(async (s) => {
           // slovesá nemajú lekcie ani cvičenia, len jeden očíslovaný zoznam
           if (isVerbSubject(s.slug)) return [s.slug, { verbs: (await loadVerbs()).length }] as const;
+          // angličtina má vlastné lekcie vo vlastných tabuľkách
+          if (isEnglishSubject(s.slug)) return [s.slug, { lessons: await countEnglishLessons(), exercises: null }] as const;
           const ls = await loadLessons(s.slug);
           return [s.slug, { lessons: ls.length, exercises: ls.reduce((n, l) => n + l.exercises, 0) }] as const;
         }),
@@ -65,7 +68,9 @@ export default function Overview() {
             const cfg = configs[s.slug];
             const c = counts[s.slug] ?? {};
             const verbs = isVerbSubject(s.slug);
+            const english = isEnglishSubject(s.slug);
             const lessons = c.lessons ?? 0;
+            const lessonWord = lessons === 1 ? "lekcia" : lessons < 5 ? "lekcie" : "lekcií";
             return (
               <Card key={s.slug} className={cx("p-4", !cfg?.enabled && "opacity-70")}>
                 <div className="flex items-center gap-3">
@@ -75,13 +80,16 @@ export default function Overview() {
                     <p className="text-sm text-slate font-semibold">
                       {verbs
                         ? `${c.verbs ?? 0} ${(c.verbs ?? 0) === 1 ? "sloveso" : (c.verbs ?? 0) < 5 ? "slovesá" : "slovies"} v zozname`
-                        : `${lessons} ${lessons === 1 ? "lekcia" : lessons < 5 ? "lekcie" : "lekcií"} · ${c.exercises ?? 0} cvičení`}
+                        : english
+                          ? `${lessons} ${lessonWord} · slovíčka, gramatika a texty`
+                          : `${lessons} ${lessonWord} · ${c.exercises ?? 0} cvičení`}
                     </p>
                   </div>
                 </div>
                 <div className="mt-3">
                   <Toggle
                     checked={!!cfg?.enabled}
+                    ariaLabel={`Predmet ${s.name}`}
                     onChange={(v) => toggleSubject(s.slug, v)}
                     label={cfg?.enabled ? "Zapnutý pre deti" : "Vypnutý"}
                     description={busy === s.slug ? "Ukladám…" : undefined}
