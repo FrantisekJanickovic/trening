@@ -126,6 +126,26 @@ export const ACTIVITIES: { key: ActivityKey; label: string; method?: MethodKey; 
 
 export const activityLabel = (k: ActivityKey) => ACTIVITIES.find((a) => a.key === k)?.label ?? k;
 
+/** Čo má dieťa s touto aktivitou robiť — text za otáznikom v tréningu. */
+const KID_HELP: Record<ActivityKey, { what: string; how: string }> = {
+  flashcards: {
+    what: "Spomeň si, čo slovíčko znamená, a potom kartičku otoč.",
+    how: "Po otočení si úprimne povedz, ako ti to išlo: Neviem, Takmer alebo Viem. Podľa toho ti appka slovíčko zopakuje skôr alebo neskôr.",
+  },
+  classic: { what: "Prelož slovíčko a napíš odpoveď.", how: "Keď sa pomýliš, dostaneš ešte jeden pokus. Pomôcť si môžeš vypočutím slova." },
+  match: { what: "Spoj slovíčka s ich prekladom.", how: "Klikni na slovo vľavo a potom na jeho preklad vpravo. Keď dvojica sedí, zmizne." },
+  scramble: { what: "Písmenká sú pomiešané, poskladaj z nich slovo.", how: "Klikaj na písmenká v správnom poradí. Posledné vybraté vieš vrátiť späť." },
+  dictation: { what: "Vypočuj si slovo a napíš ho.", how: "Vypočuť si ho môžeš aj viackrát, klikni na reproduktor." },
+  speed: { what: "Rýchla runda: vyber správny preklad, kým beží čas.", how: "Nemusíš stihnúť všetko, ide o to, čo ti už ide samo." },
+  shadowing: { what: "Vypočuj si vetu a zopakuj ju nahlas po nej.", how: "Nič sa nehodnotí, ide o výslovnosť. Klikni na Ďalej, keď si hotový." },
+  grammar: { what: "Doplň do vety chýbajúce slovo.", how: "Buď vyberieš z možností, alebo slovo napíšeš. Pri chybe uvidíš, ako to má byť." },
+  writing: { what: "Poskladaj z ponúknutých slov celú vetu.", how: "Klikaj na slová v poradí, v akom idú vo vete. Posledné vieš vrátiť späť." },
+  reading: { what: "Prečítaj si text po vetách.", how: "Preklad si zobrazíš klepnutím, nič sa nehodnotí." },
+  listening: { what: "Počúvaj vety a sleduj preklad.", how: "Nič sa nehodnotí, ide o to zvyknúť si na angličtinu." },
+};
+
+export const activityHelp = (k: ActivityKey) => ({ title: activityLabel(k), ...(KID_HELP[k] ?? { what: "Postupuj podľa zadania.", how: "" }) });
+
 export const SKILLS = ["Slovíčka", "Pravopis", "Výslovnosť", "Počúvanie", "Čítanie", "Gramatika", "Rozprávanie"];
 export const LIKES = ["Hry", "Súťaženie", "Rýchle úlohy", "Obrázky", "Pokojné tempo"];
 

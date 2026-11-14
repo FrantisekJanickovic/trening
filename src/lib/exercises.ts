@@ -18,13 +18,54 @@ export type Payload = McqPayload | TrueFalsePayload | PairsPayload | ClozePayloa
 
 export const GAP = "___";
 
-export const TYPES: { key: ExerciseType; label: string; short: string; help: string }[] = [
-  { key: "mcq", label: "Výber z možností", short: "Výber", help: "Otázka a niekoľko možností. Správne môžu byť aj dve, dieťa to vopred vie." },
-  { key: "truefalse", label: "Pravda alebo nepravda", short: "Pravda/nepravda", help: "Tvrdenie, ktoré dieťa posúdi." },
-  { key: "pairs", label: "Spájanie dvojíc", short: "Dvojice", help: "Napríklad osobnosť a rok, pojem a význam." },
-  { key: "cloze", label: "Doplňovačka v texte", short: "Doplňovačka", help: "Veta z lekcie s vynechaným kľúčovým slovom." },
-  { key: "order", label: "Usporiadanie", short: "Poradie", help: "Zoradenie udalostí alebo krokov v správnom poradí." },
+export const TYPES: { key: ExerciseType; label: string; short: string; help: string; kid: string; kidHow: string }[] = [
+  {
+    key: "mcq",
+    label: "Výber z možností",
+    short: "Výber",
+    help: "Otázka a niekoľko možností. Správne môžu byť aj dve, dieťa to vopred vie.",
+    kid: "Prečítaj si otázku a klikni na odpoveď, ktorá k nej sedí.",
+    kidHow: "Keď treba vybrať dve odpovede, appka to napíše nad možnosťami.",
+  },
+  {
+    key: "truefalse",
+    label: "Pravda alebo nepravda",
+    short: "Pravda/nepravda",
+    help: "Tvrdenie, ktoré dieťa posúdi.",
+    kid: "Prečítaj si vetu a rozhodni, či platí.",
+    kidHow: "Klikni na Pravda, keď to tak je, alebo na Nepravda, keď to tak nie je.",
+  },
+  {
+    key: "pairs",
+    label: "Spájanie dvojíc",
+    short: "Dvojice",
+    help: "Napríklad osobnosť a rok, pojem a význam.",
+    kid: "Spoj, čo patrí k sebe.",
+    kidHow: "Klikni na jedno slovo vľavo a potom na to, čo k nemu patrí vpravo. Keď dvojica sedí, odloží sa dole.",
+  },
+  {
+    key: "cloze",
+    label: "Doplňovačka v texte",
+    short: "Doplňovačka",
+    help: "Veta z lekcie s vynechaným kľúčovým slovom.",
+    kid: "Vo vete chýbajú slová, doplň ich.",
+    kidHow: "Klikni na slovo dole a doplní sa do prvého prázdneho okienka. Keď sa pomýliš, klikni na okienko a slovo sa vráti späť.",
+  },
+  {
+    key: "order",
+    label: "Usporiadanie",
+    short: "Poradie",
+    help: "Zoradenie udalostí alebo krokov v správnom poradí.",
+    kid: "Zoraď to do správneho poradia.",
+    kidHow: "Klikaj na riadky postupne — od toho, čo bolo prvé, po to, čo bolo posledné.",
+  },
 ];
+
+/** Čo má dieťa s týmto typom cvičenia robiť — text za otáznikom v tréningu. */
+export const typeHelp = (t: string) => {
+  const d = TYPES.find((x) => x.key === t);
+  return { title: d?.label ?? "Cvičenie", what: d?.kid ?? "Odpovedz podľa zadania.", how: d?.kidHow };
+};
 
 export const typeLabel = (t: string) => TYPES.find((x) => x.key === t)?.label ?? t;
 export const isType = (t: string): t is ExerciseType => TYPES.some((x) => x.key === t);

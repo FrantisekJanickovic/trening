@@ -787,25 +787,6 @@ export default function LessonEditor() {
           <div className="space-y-3">
             {vocab.map((r, i) => (
               <div key={r.id} id={`row-${r.id}`} className={cx("rounded-2xl border-2 bg-paper/50 p-3 space-y-2 transition-colors", flashClass(r.id))}>
-                <AiPanel
-                  kind="vocab"
-                  code={r.code}
-                  label={r.en || "slovíčko"}
-                  {...aiCtx}
-                  target={{ en: r.en, sk: r.sk, example_en: r.example_en, example_sk: r.example_sk, emoji: r.emoji }}
-                  existing={vocab.filter((x) => x.en).map((x) => x.en)}
-                  onFixed={(f: Record<string, unknown>) => {
-                    setVocab((rows) => rows.map((x, j) => (j === i ? vRowFrom(f, x) : x)));
-                    highlight([r.id]);
-                    dirty();
-                  }}
-                  onAdd={(items: Record<string, unknown>[]) => {
-                    const added = items.map((x) => vRowFrom(x));
-                    setVocab((rows) => [...rows.slice(0, i + 1), ...added, ...rows.slice(i + 1)]);
-                    highlight(added.map((x) => x.id));
-                    dirty();
-                  }}
-                />
                 <div className="grid grid-cols-[1fr_1fr_48px_36px] sm:grid-cols-[1fr_1fr_56px_36px] gap-2">
                   <Input value={r.en} onChange={(e) => updV(i, "en", e.target.value)} placeholder="apple" autoCapitalize="off" aria-label="Anglicky" />
                   <Input value={r.sk} onChange={(e) => updV(i, "sk", e.target.value)} placeholder="jablko" aria-label="Slovensky" />
@@ -830,6 +811,26 @@ export default function LessonEditor() {
                     aria-label="Veta slovensky"
                   />
                 </div>
+
+                <AiPanel
+                  kind="vocab"
+                  code={r.code}
+                  label={r.en || "slovíčko"}
+                  {...aiCtx}
+                  target={{ en: r.en, sk: r.sk, example_en: r.example_en, example_sk: r.example_sk, emoji: r.emoji }}
+                  existing={vocab.filter((x) => x.en).map((x) => x.en)}
+                  onFixed={(f: Record<string, unknown>) => {
+                    setVocab((rows) => rows.map((x, j) => (j === i ? vRowFrom(f, x) : x)));
+                    highlight([r.id]);
+                    dirty();
+                  }}
+                  onAdd={(items: Record<string, unknown>[]) => {
+                    const added = items.map((x) => vRowFrom(x));
+                    setVocab((rows) => [...rows.slice(0, i + 1), ...added, ...rows.slice(i + 1)]);
+                    highlight(added.map((x) => x.id));
+                    dirty();
+                  }}
+                />
               </div>
             ))}
           </div>
@@ -859,26 +860,6 @@ export default function LessonEditor() {
           )}
           {grammar.map((r, i) => (
             <div key={r.id} id={`row-${r.id}`} className={cx("rounded-2xl border-2 bg-paper/50 p-3 space-y-2 transition-colors", flashClass(r.id))}>
-              <AiPanel
-                kind="grammar"
-                code={r.code}
-                label={r.prompt || "cvičenie"}
-                {...aiCtx}
-                topic={topic}
-                target={{ prompt: r.prompt, answer: r.answer, options: r.options, translation_sk: r.translation_sk, explanation_sk: r.explanation_sk }}
-                existing={grammar.filter((x) => x.prompt).map((x) => x.prompt)}
-                onFixed={(f: Record<string, unknown>) => {
-                  setGrammar((rows) => rows.map((x, j) => (j === i ? gRowFrom(f, x) : x)));
-                  highlight([r.id]);
-                  dirty();
-                }}
-                onAdd={(items: Record<string, unknown>[]) => {
-                  const added = items.map((x) => gRowFrom(x));
-                  setGrammar((rows) => [...rows.slice(0, i + 1), ...added, ...rows.slice(i + 1)]);
-                  highlight(added.map((x) => x.id));
-                  dirty();
-                }}
-              />
               <div className="flex gap-2">
                 <Input value={r.prompt} onChange={(e) => updG(i, "prompt", e.target.value)} placeholder="She ___ got a cat." aria-label="Veta s medzerou" />
                 <button type="button" onClick={() => delG(i)} className="text-mist hover:text-tomato px-1" aria-label="Zmazať cvičenie">
@@ -904,6 +885,27 @@ export default function LessonEditor() {
                 />
               </div>
               {r.source_id && sourceLabel.has(r.source_id) && <p className="text-xs text-mist font-semibold">Z učebnice: {sourceLabel.get(r.source_id)}</p>}
+
+              <AiPanel
+                kind="grammar"
+                code={r.code}
+                label={r.prompt || "cvičenie"}
+                {...aiCtx}
+                topic={topic}
+                target={{ prompt: r.prompt, answer: r.answer, options: r.options, translation_sk: r.translation_sk, explanation_sk: r.explanation_sk }}
+                existing={grammar.filter((x) => x.prompt).map((x) => x.prompt)}
+                onFixed={(f: Record<string, unknown>) => {
+                  setGrammar((rows) => rows.map((x, j) => (j === i ? gRowFrom(f, x) : x)));
+                  highlight([r.id]);
+                  dirty();
+                }}
+                onAdd={(items: Record<string, unknown>[]) => {
+                  const added = items.map((x) => gRowFrom(x));
+                  setGrammar((rows) => [...rows.slice(0, i + 1), ...added, ...rows.slice(i + 1)]);
+                  highlight(added.map((x) => x.id));
+                  dirty();
+                }}
+              />
             </div>
           ))}
           <Button variant="ghost" onClick={() => setGrammar((g) => [...g, emptyG()])}>
@@ -928,27 +930,6 @@ export default function LessonEditor() {
           </div>
           {texts.map((t, ti) => (
             <div key={t.id} id={`row-${t.id}`} className={cx("rounded-2xl border-2 bg-paper/50 p-3 space-y-2 transition-colors", flashClass(t.id))}>
-              <AiPanel
-                kind="text"
-                code={t.code}
-                label={t.title || "text"}
-                {...aiCtx}
-                target={{ title: t.title, sentences: t.sentences.map((x) => ({ en: x.en, sk: x.sk })) }}
-                existing={texts.map((x) => x.title).filter(Boolean)}
-                onFixed={(f: Record<string, unknown>) => {
-                  highlight([t.id]);
-                  const sent = Array.isArray(f.sentences) ? (f.sentences as { en?: string; sk?: string }[]) : [];
-                  setTexts((x) =>
-                    x.map((r, j) =>
-                      j === ti
-                        ? { ...r, title: String(f.title ?? r.title), sentences: withIds(sent.map((v) => ({ en: String(v.en ?? ""), sk: String(v.sk ?? "") }))) }
-                        : r,
-                    ),
-                  );
-                  dirty();
-                }}
-                onAdd={() => {}}
-              />
               <div className="flex gap-2">
                 <Input
                   value={t.title}
@@ -1025,6 +1006,27 @@ export default function LessonEditor() {
                   <span className="text-xs text-mist font-semibold">Z učebnice: {sourceLabel.get(t.source_id)}</span>
                 )}
               </div>
+              <AiPanel
+                kind="text"
+                code={t.code}
+                label={t.title || "text"}
+                {...aiCtx}
+                target={{ title: t.title, sentences: t.sentences.map((x) => ({ en: x.en, sk: x.sk })) }}
+                existing={texts.map((x) => x.title).filter(Boolean)}
+                onFixed={(f: Record<string, unknown>) => {
+                  highlight([t.id]);
+                  const sent = Array.isArray(f.sentences) ? (f.sentences as { en?: string; sk?: string }[]) : [];
+                  setTexts((x) =>
+                    x.map((r, j) =>
+                      j === ti
+                        ? { ...r, title: String(f.title ?? r.title), sentences: withIds(sent.map((v) => ({ en: String(v.en ?? ""), sk: String(v.sk ?? "") }))) }
+                        : r,
+                    ),
+                  );
+                  dirty();
+                }}
+                onAdd={() => {}}
+              />
             </div>
           ))}
         </Card>

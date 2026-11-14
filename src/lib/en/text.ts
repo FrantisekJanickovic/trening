@@ -9,7 +9,7 @@ export function normalize(s: string) {
     .toLowerCase()
     .replace(/[’‘`]/g, "'")
     .replace(/\([^)]*\)/g, " ")
-    .replace(/[.,!?;:"„“”]/g, " ")
+    .replace(/[.,!?;:"„“”…]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -20,6 +20,15 @@ export function alternatives(answer: string): string[] {
     .split(/[,;/|]/)
     .map((a) => a.trim())
     .filter(Boolean);
+}
+
+/**
+ * Výpustka v slovíčku („Where are …?“) hovorí, že veta pokračuje. Dieťa má
+ * preložiť len to, čo je pred ňou, tak si tie časti vieme oddeliť.
+ */
+export function splitEllipsis(text: string): { main: string; rest: string } {
+  const m = text.match(/^([^]*?)(\s*(?:\.\.\.|…)[^]*)$/);
+  return m && m[1].trim() ? { main: m[1].trim(), rest: m[2] } : { main: text, rest: "" };
 }
 
 export function displayAnswer(answer: string) {

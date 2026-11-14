@@ -4,6 +4,7 @@ import { ChevronRight, X } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FontSize, fontScaleStyle, readFontStep, saveFontStep, type FontStep } from "@/components/font-size";
+import HelpButton from "@/components/help-button";
 import { Button, Card, ErrorNote, Input, Spinner, cx } from "@/components/ui";
 import { subjectDef, type SubjectSlug } from "@/data/subjects";
 import { cheer } from "@/lib/cheer";
@@ -301,6 +302,19 @@ function Training({
         <span className="text-sm font-black text-slate tabular-nums">
           {idx}/{tasks.length}
         </span>
+        <HelpButton
+          title={task.kind === "preklad" ? "Preklad slovesa" : "Tvary slovesa"}
+          what={
+            task.kind === "preklad"
+              ? "Prelož sloveso do druhého jazyka."
+              : "Doplň k slovesu minulý čas a minulé príčastie."
+          }
+          how={
+            setup.answer === "vyber"
+              ? "Klikni na možnosť, ktorá sedí, a potom na Skontrolovať."
+              : "Napíš odpoveď do políčka a klikni na Skontrolovať. Poradie tvarov sa strieda, všímaj si, čo sa od teba pýta."
+          }
+        />
         <FontSize step={font} onChange={setFont} />
       </header>
 
