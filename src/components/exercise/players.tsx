@@ -266,7 +266,8 @@ function Cloze({ payload, done, onSubmit }: PlayerProps) {
                       onClick={() => clear(i)}
                       disabled={done || !filled[i]}
                       className={cx(
-                        "mx-1 inline-block min-w-24 rounded-lg border-2 px-2 font-black",
+                        // okienko je jeden celok: radšej skočí na nový riadok, než by sa slovo rozlomilo
+                        "mx-1 inline-block min-w-24 whitespace-nowrap align-baseline rounded-lg border-2 px-2 font-black",
                         done
                           ? ok
                             ? "bg-leaf-soft border-leaf text-leaf"
@@ -292,7 +293,7 @@ function Cloze({ payload, done, onSubmit }: PlayerProps) {
               type="button"
               disabled={used.includes(w)}
               onClick={() => put(w)}
-              className={cx(tile, "px-3 py-2 text-base", used.includes(w) ? "bg-paper border-line text-mist" : "bg-card border-line")}
+              className={cx(tile, "px-3 py-2 text-base whitespace-nowrap", used.includes(w) ? "bg-paper border-line text-mist" : "bg-card border-line")}
             >
               {w}
             </button>

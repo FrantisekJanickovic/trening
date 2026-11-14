@@ -3,6 +3,7 @@
 import { Mic, Square } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { canRecognize, listen, type Listening } from "@/lib/en/speech";
+import { splitEllipsis } from "@/lib/en/text";
 import type { Lang } from "@/lib/en/types";
 import { cx, SpeakButton } from "@/components/ui";
 import type { SessionCtx } from "./engine";
@@ -103,14 +104,25 @@ export function PromptCard({
     if (autoSpeak) ctx.say(text, lang);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, lang, autoSpeak]);
+  const parted = splitEllipsis(text);
   return (
     <div className="rounded-[2rem] bg-card border-2 border-line border-b-[6px] px-5 py-7 text-center anim-rise">
       {ctx.showEmoji && emoji && <div className="text-6xl mb-2 leading-none">{emoji}</div>}
       <div className="flex items-center justify-center gap-3">
-        <span className="text-[2.1rem] leading-tight font-black break-words">{text}</span>
+        <span className="text-[2.1rem] leading-tight font-black break-words">
+          {parted.rest ? (
+            <>
+              <mark className="bg-sun-soft text-ink rounded px-1">{parted.main}</mark>
+              <span className="text-mist">{parted.rest}</span>
+            </>
+          ) : (
+            text
+          )}
+        </span>
         <SpeakButton onClick={() => ctx.say(text, lang)} />
       </div>
       <div className="mt-1 text-sm font-bold text-mist">{lang === "en" ? "anglicky" : "slovensky"}</div>
+      {parted.rest && <div className="mt-1 text-sm font-bold text-slate">Prelož len zvýraznenú časť.</div>}
       {sub}
     </div>
   );

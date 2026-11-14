@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GuideButton, GUIDES, type GuideId } from "@/components/en/guides";
+import HelpButton from "@/components/help-button";
 import Classic from "@/components/en/session/activities/Classic";
 import Flashcards from "@/components/en/session/activities/Flashcards";
 import Grammar from "@/components/en/session/activities/Grammar";
@@ -24,7 +25,7 @@ import { loadConfig } from "@/lib/en/config";
 import { getChild, listLessons, loadContent, loadProblems, loadProgress, loadReviewItems, todayISO, type LessonWithCounts } from "@/lib/en/data";
 import { phrases } from "@/lib/en/phrases";
 import { itemKey, orderLessons, pickReview, previousLessonIds, problemUpdates } from "@/lib/en/problems";
-import { activityLabel, GRADES, gradeLabel, mergeSettings } from "@/lib/en/settings";
+import { activityHelp, activityLabel, GRADES, gradeLabel, mergeSettings } from "@/lib/en/settings";
 import { prefetch, speak, stopSpeaking, unlockAudio } from "@/lib/en/speech";
 import { supabase } from "@/lib/supabase";
 import { nowMs } from "@/lib/en/text";
@@ -529,6 +530,7 @@ export function Runner({
               </div>
             ))}
         </div>
+        <HelpButton {...activityHelp(current.key)} />
         <span className="size-10 inline-flex items-center justify-center text-2xl" aria-hidden>
           {child.avatar}
         </span>

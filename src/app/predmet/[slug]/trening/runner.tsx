@@ -5,12 +5,13 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { PLAYERS } from "@/components/exercise/players";
 import { FontSize, fontScaleStyle, readFontStep, saveFontStep, type FontStep } from "@/components/font-size";
+import HelpButton from "@/components/help-button";
 import { Button, Card, ErrorNote, Spinner, cx } from "@/components/ui";
 import { subjectDef, type SubjectSlug } from "@/data/subjects";
 import { cheer } from "@/lib/cheer";
 import { loadConfig } from "@/lib/config";
 import { getChild, loadExercises, loadFiguresByIds, loadProgress, loadSets, loadSourcesFor } from "@/lib/data";
-import { explainOf, figureOf, isCorrect, matchesYears, preview, solutionLines, typeLabel, type Answer } from "@/lib/exercises";
+import { explainOf, figureOf, isCorrect, matchesYears, preview, solutionLines, typeHelp, typeLabel, type Answer } from "@/lib/exercises";
 import { figureUrls } from "@/lib/figures";
 import { decodePages, filterByPages } from "@/lib/pages";
 import { buildPlan, COUNTS } from "@/lib/plan";
@@ -299,6 +300,7 @@ function Training({
         <span className="text-sm font-black text-slate tabular-nums">
           {idx}/{plan.length}
         </span>
+        <HelpButton {...typeHelp(ex.type)} />
         <FontSize step={font} onChange={setFont} />
       </header>
 
