@@ -1,6 +1,7 @@
 "use client";
 
 import { authHeader } from "@/lib/supabase";
+import type { ItemKind, Ref, Revision } from "./revise";
 import type { Sentence, SourceType } from "./types";
 
 export type DraftVocab = { en: string; sk: string; example_en?: string; example_sk?: string; emoji?: string };
@@ -77,3 +78,17 @@ export async function aiInfo(): Promise<AiInfo> {
 }
 
 export const aiStatus = async () => (await aiInfo()).ai;
+
+/** Pokyn rodiča k jednej položke lekcie: oprava, doplnenie alebo nové položky. */
+export const reviseItem = (input: {
+  kind: ItemKind;
+  action: string;
+  instruction: string;
+  grade?: number | null;
+  title?: string;
+  topic?: string;
+  target: Record<string, unknown>;
+  refs?: Ref[];
+  existing?: string[];
+  count?: number;
+}) => post<Revision>("/api/en/revise", input);
