@@ -4,12 +4,15 @@
  */
 export type ExerciseType = "mcq" | "truefalse" | "pairs" | "cloze" | "order";
 
-export type McqPayload = { question: string; options: string[]; correct: number[]; explain?: string };
-export type TrueFalsePayload = { statement: string; answer: boolean; explain?: string };
-export type PairsPayload = { prompt?: string; pairs: { left: string; right: string }[] };
+/** Obrázok z galérie lekcie, ktorý sa ukáže nad zadaním. Spoločné pre všetky typy. */
+type WithFigure = { figure?: string };
+
+export type McqPayload = WithFigure & { question: string; options: string[]; correct: number[]; explain?: string };
+export type TrueFalsePayload = WithFigure & { statement: string; answer: boolean; explain?: string };
+export type PairsPayload = WithFigure & { prompt?: string; pairs: { left: string; right: string }[] };
 /** text s medzerami zapísanými ako ___; answers[i] patrí i-tej medzere */
-export type ClozePayload = { text: string; answers: string[]; options: string[]; explain?: string };
-export type OrderPayload = { prompt: string; items: string[] };
+export type ClozePayload = WithFigure & { text: string; answers: string[]; options: string[]; explain?: string };
+export type OrderPayload = WithFigure & { prompt: string; items: string[] };
 
 export type Payload = McqPayload | TrueFalsePayload | PairsPayload | ClozePayload | OrderPayload;
 
@@ -31,9 +34,23 @@ const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const uniq = (a: string[]) => new Set(a.map((x) => x.toLocaleLowerCase("sk"))).size === a.length;
 export const gapCount = (text: string) => text.split(GAP).length - 1;
 
+/** Kód cvičenia: 6 znakov bez zameniteľných núl a jednotiek. */
+export const CODE_RE = /\b[2-9A-HJ-NP-Z]{6}\b/g;
+
+/**
+ * Kódy, na ktoré sa rodič mohol odvolať v prompte ("sprav podobné ako A3F7K2").
+ * Vracia kandidátov — volajúci ich preosieva cez kódy, ktoré lekcia naozaj má,
+ * inak by sa chytilo aj bežné slovo ako SPRAVY.
+ */
+export const codesIn = (text: string) => [...new Set((text.toUpperCase().match(CODE_RE) ?? []))].slice(0, 10);
+
+/** Obrázok sa k cvičeniu pripája ako id z galérie lekcie. */
+export const figureOf = (payload: Payload): string | undefined => (payload as WithFigure).figure;
+
 /** Očistí, čo prišlo z AI alebo z formulára. Vráti null, keď sa cvičenie nedá použiť. */
 export function cleanPayload(type: ExerciseType, raw: unknown): Payload | null {
   const r = (raw ?? {}) as Record<string, unknown>;
+  const fig = typeof r.figure === "string" && /^[0-9a-f-]{36}$/i.test(r.figure.trim()) ? { figure: r.figure.trim() } : {};
   if (type === "mcq") {
     const question = str(r.question, 300);
     const options = list(r.options)
@@ -48,12 +65,12 @@ export function cleanPayload(type: ExerciseType, raw: unknown): Payload | null {
     ].sort();
     if (!question || options.length < 2 || options.length > 6 || !uniq(options)) return null;
     if (!correct.length || correct.length >= options.length) return null;
-    return { question, options, correct, explain: str(r.explain, 300) || undefined };
+    return { ...fig, question, options, correct, explain: str(r.explain, 300) || undefined };
   }
   if (type === "truefalse") {
     const statement = str(r.statement, 300);
     if (!statement || typeof r.answer !== "boolean") return null;
-    return { statement, answer: r.answer, explain: str(r.explain, 300) || undefined };
+    return { ...fig, statement, answer: r.answer, explain: str(r.explain, 300) || undefined };
   }
   if (type === "pairs") {
     const pairs = list(r.pairs)
@@ -61,7 +78,7 @@ export function cleanPayload(type: ExerciseType, raw: unknown): Payload | null {
       .filter((p) => p.left && p.right);
     if (pairs.length < 3 || pairs.length > 6) return null;
     if (!uniq(pairs.map((p) => p.left)) || !uniq(pairs.map((p) => p.right))) return null;
-    return { prompt: str(r.prompt, 160) || undefined, pairs };
+    return { ...fig, prompt: str(r.prompt, 160) || undefined, pairs };
   }
   if (type === "cloze") {
     const text = str(r.text, 400);
@@ -75,14 +92,14 @@ export function cleanPayload(type: ExerciseType, raw: unknown): Payload | null {
       .filter(Boolean);
     const options = [...new Set([...answers, ...extra])];
     if (options.length < answers.length + 1 || options.length > 8) return null;
-    return { text, answers, options, explain: str(r.explain, 300) || undefined };
+    return { ...fig, text, answers, options, explain: str(r.explain, 300) || undefined };
   }
   const prompt = str(r.prompt, 200);
   const items = list(r.items)
     .map((i) => str(i, 120))
     .filter(Boolean);
   if (!prompt || items.length < 3 || items.length > 6 || !uniq(items)) return null;
-  return { prompt, items };
+  return { ...fig, prompt, items };
 }
 
 /** Odpoveď dieťaťa pre jednotlivé typy. */

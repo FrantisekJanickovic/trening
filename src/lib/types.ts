@@ -46,6 +46,8 @@ export type Mindmap = {
 
 export type Exercise = {
   id: string;
+  /** krátky kód, unikátny cez celú tabuľku; rodič sa naň odvoláva v promptoch pre AI */
+  code: string;
   lesson_id: string;
   type: ExerciseType;
   payload: Payload;

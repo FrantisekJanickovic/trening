@@ -1,27 +1,55 @@
 "use client";
 
-import { BadgeCheck, Check, CircleHelp, Eye, EyeOff, ListChecks, Loader2, Pencil, Plus, ShieldCheck, Trash2, X } from "lucide-react";
+import { BadgeCheck, Check, CircleHelp, Copy, Eye, EyeOff, ListChecks, Pencil, Plus, ShieldCheck, Sparkles, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ExerciseForm, emptyPayload } from "@/components/exercise/editors";
-import { Button, Card, ErrorNote, Input, cx } from "@/components/ui";
+import PromptBox, { type Preset } from "@/components/prompt-box";
+import { Button, Card, ErrorNote, Input, cx, useBusyCursor } from "@/components/ui";
 import type { SubjectSlug } from "@/data/subjects";
-import { loadSets } from "@/lib/data";
-import { aspectDef, preview, solutionLines, typeLabel, type ExerciseType, type Payload } from "@/lib/exercises";
+import { reviseExercise, type ExerciseRef } from "@/lib/ai";
+import { loadFigures, loadSets } from "@/lib/data";
+import { aspectDef, codesIn, figureOf, preview, solution, solutionLines, TYPES, typeLabel, type ExerciseType, type Payload } from "@/lib/exercises";
 import { runFactcheck } from "@/lib/factcheck";
+import { figureUrls } from "@/lib/figures";
 import { supabase } from "@/lib/supabase";
-import type { Exercise, ExerciseSet, Lesson, Source } from "@/lib/types";
+import type { Exercise, ExerciseSet, Figure, Lesson, Source, SubjectConfig } from "@/lib/types";
 
 type Props = {
   lesson: Lesson;
   slug: SubjectSlug;
   sources: Source[];
   exercises: Exercise[];
+  config: SubjectConfig;
   ai: boolean;
   reload: () => Promise<void>;
   onWantMore: () => void;
 };
 
-export default function ExercisesTab({ lesson, slug, sources, exercises, ai, reload, onWantMore }: Props) {
+/** Ako sa cvičenie podáva AI, keď sa naň rodič odvolá kódom. */
+const refOf = (e: Exercise): ExerciseRef => ({ code: e.code, type: e.type, text: preview(e.type, e.payload), solution: solution(e.type, e.payload) });
+
+/** Kód cvičenia. Rodič ho prepíše do pokynu pre AI, tak sa dá aj skopírovať. */
+function CodeChip({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      title="Skopírovať kód cvičenia"
+      aria-label={`Kód cvičenia ${code}`}
+      onClick={() => {
+        navigator.clipboard?.writeText(code).catch(() => {});
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      }}
+      className="inline-flex items-center gap-1 rounded-md bg-ink/5 px-1.5 py-0.5 font-mono text-xs font-black text-slate hover:bg-ink/10"
+    >
+      {code}
+      {copied ? <Check className="size-3 text-leaf" /> : <Copy className="size-3 opacity-60" />}
+    </button>
+  );
+}
+
+export default function ExercisesTab({ lesson, slug, sources, exercises, config, ai, reload, onWantMore }: Props) {
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState<ExerciseType | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
@@ -29,6 +57,12 @@ export default function ExercisesTab({ lesson, slug, sources, exercises, ai, rel
   const [sets, setSets] = useState<ExerciseSet[]>([]);
   const [review, setReview] = useState<number | null>(null);
   const [busy, setBusy] = useState<"check" | "set" | null>(null);
+  const [figures, setFigures] = useState<Figure[]>([]);
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  // pokyn pre AI patrí vždy k jednému cvičeniu
+  const [promptFor, setPromptFor] = useState<string | null>(null);
+  const [promptText, setPromptText] = useState("");
+  const [promptBusy, setPromptBusy] = useState<string | null>(null);
   // prepínač sa prekreslí hneď, nečaká sa na načítanie zoznamu z databázy
   const [pendingChecked, setPendingChecked] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +72,17 @@ export default function ExercisesTab({ lesson, slug, sources, exercises, ai, rel
   useEffect(() => {
     reloadSets().catch(() => setSets([]));
   }, [reloadSets]);
+
+  useEffect(() => {
+    loadFigures([lesson.id])
+      .then(async (f) => {
+        setFigures(f);
+        setUrls(await figureUrls(f).catch(() => ({})));
+      })
+      .catch(() => setFigures([]));
+  }, [lesson.id]);
+
+  useBusyCursor(busy === "check" || !!promptBusy);
 
   const isChecked = (e: Exercise) => pendingChecked[e.id] ?? e.checked;
   const unchecked = exercises.filter((e) => !isChecked(e));
@@ -72,6 +117,84 @@ export default function ExercisesTab({ lesson, slug, sources, exercises, ai, rel
       delete next[e.id];
       return next;
     });
+  }
+
+  /** Pokyn rodiča k jednému cvičeniu: oprava predlohy, nové cvičenia alebo obrázok. */
+  async function runPrompt(e: Exercise, action: string) {
+    setPromptBusy(action);
+    setError(null);
+    setInfo(null);
+    try {
+      const text = promptText.trim();
+      const known = new Map(exercises.map((x) => [x.code, x]));
+      const refs = codesIn(text)
+        .filter((c) => c !== e.code && known.has(c))
+        .map((c) => refOf(known.get(c)!));
+      const types = TYPES.filter((t) => config.types[t.key]).map((t) => t.key);
+      const r = await reviseExercise({
+        subject: slug,
+        grade: lesson.grade,
+        title: lesson.title,
+        sections: sources.map((x) => ({ heading: x.heading ?? "", text: x.text })),
+        types: types.length ? types : [e.type],
+        count: 4,
+        action,
+        instruction: text,
+        target: { ...refOf(e), concept: e.concept, payload: e.payload },
+        refs,
+        figures: figures.map((f) => ({ id: f.id, caption: f.caption, explain: f.explain })),
+      });
+
+      const sb = supabase();
+      const parts: string[] = [];
+      let payload: Payload = e.payload;
+      let changed = false;
+      if (r.fixed) {
+        const keep = figureOf(e.payload);
+        payload = keep && !figureOf(r.fixed.payload) ? ({ ...r.fixed.payload, figure: keep } as Payload) : r.fixed.payload;
+        changed = true;
+        parts.push("cvičenie je upravené");
+      }
+      if (r.figure) {
+        payload = { ...payload, figure: r.figure } as Payload;
+        changed = true;
+        parts.push("pridaný obrázok");
+      }
+      if (changed) {
+        const patch = {
+          payload,
+          concept: r.fixed?.concept || e.concept,
+          checked: false,
+          check_note: null,
+          updated_at: new Date().toISOString(),
+        };
+        const { error } = await sb.from("tr_exercises").update(patch).eq("id", e.id);
+        if (error) throw new Error(error.message);
+      }
+      if (r.added.length) {
+        const rows = r.added.map((x, i) => ({
+          lesson_id: lesson.id,
+          type: x.type,
+          payload: x.payload,
+          concept: x.concept || e.concept,
+          level: x.level,
+          aspect: e.aspect,
+          source_id: e.source_id,
+          position: Date.now() + i,
+        }));
+        const { error } = await sb.from("tr_exercises").insert(rows);
+        if (error) throw new Error(error.message);
+        parts.push(`pridaných ${rows.length} nových cvičení`);
+      }
+      await reload();
+      setPromptText("");
+      if (!parts.length) setPromptFor(null);
+      setInfo(`${r.note}${parts.length ? ` (${parts.join(", ")})` : ""}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Pokyn sa nepodarilo spracovať.");
+    } finally {
+      setPromptBusy(null);
+    }
   }
 
   async function saveExercise(id: string | null, type: ExerciseType, payload: Payload, concept: string) {
@@ -173,6 +296,7 @@ export default function ExercisesTab({ lesson, slug, sources, exercises, ai, rel
 
         <div className="rounded-2xl border-2 border-line p-4">
           <div className="flex flex-wrap items-center gap-2 mb-2">
+            <CodeChip code={e.code} />
             <span className="rounded-md bg-sky-soft text-sky px-1.5 py-0.5 text-xs font-black">{typeLabel(e.type)}</span>
             {e.concept && <span className="rounded-md bg-paper text-slate px-1.5 py-0.5 text-xs font-bold">{e.concept}</span>}
             {aspectDef(e.aspect) && <span className="rounded-md bg-sun-soft text-sun-deep px-1.5 py-0.5 text-xs font-bold">{aspectDef(e.aspect)!.label}</span>}
@@ -203,6 +327,13 @@ export default function ExercisesTab({ lesson, slug, sources, exercises, ai, rel
     );
   }
 
+  const presets: Preset[] = [
+    { key: "gramatika", label: "Skontroluj gramatiku" },
+    { key: "typy", label: "Pridaj ďalšie typy cvičení" },
+    { key: "variacie", label: "Pridaj viac variácií" },
+    ...(figures.length ? [{ key: "obrazok", label: "Pridaj obrázok" }] : []),
+  ];
+
   return (
     <Card className="p-4 sm:p-5 space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -227,8 +358,8 @@ export default function ExercisesTab({ lesson, slug, sources, exercises, ai, rel
           <Button variant="outline" size="sm" onClick={() => setReview(0)} disabled={!!busy}>
             <ListChecks className="size-4" /> Review cvičení
           </Button>
-          <Button variant="outline" size="sm" onClick={() => check(unchecked)} disabled={!ai || !!busy || !unchecked.length}>
-            {busy === "check" ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />} Skontrolovať neoznačené ({unchecked.length})
+          <Button variant="outline" size="sm" onClick={() => check(unchecked)} loading={busy === "check"} disabled={!ai || !!busy || !unchecked.length}>
+            {busy !== "check" && <ShieldCheck className="size-4" />} Skontrolovať neoznačené ({unchecked.length})
           </Button>
           <span className="text-xs font-bold text-slate">
             Skontrolované: {exercises.length - unchecked.length} z {exercises.length}
@@ -253,7 +384,8 @@ export default function ExercisesTab({ lesson, slug, sources, exercises, ai, rel
                 <ExerciseForm type={e.type} payload={e.payload} concept={e.concept} onCancel={() => setEditing(null)} onSave={(p, c) => saveExercise(e.id, e.type, p, c)} />
               </li>
             ) : (
-              <li key={e.id} className={cx("py-3 flex items-start gap-2", !e.enabled && "opacity-60")}>
+              <li key={e.id} className={cx("py-3", !e.enabled && "opacity-60")}>
+                <div className="flex items-start gap-2">
                 <input
                   type="checkbox"
                   className="mt-1.5 size-4 shrink-0 accent-[#1b2559]"
@@ -263,6 +395,7 @@ export default function ExercisesTab({ lesson, slug, sources, exercises, ai, rel
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
+                    <CodeChip code={e.code} />
                     <span className="rounded-md bg-sky-soft text-sky px-1.5 py-0.5 text-xs font-black">{typeLabel(e.type)}</span>
                     {e.concept && <span className="rounded-md bg-paper text-slate px-1.5 py-0.5 text-xs font-bold">{e.concept}</span>}
                     {aspectDef(e.aspect) && <span className="rounded-md bg-mist/20 text-slate px-1.5 py-0.5 text-xs font-bold">{aspectDef(e.aspect)!.label}</span>}
@@ -271,6 +404,10 @@ export default function ExercisesTab({ lesson, slug, sources, exercises, ai, rel
                     )}
                   </div>
                   <p className="font-bold mt-1 break-words">{preview(e.type, e.payload)}</p>
+                  {figureOf(e.payload) && urls[figureOf(e.payload)!] && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={urls[figureOf(e.payload)!]} alt="Obrázok pri cvičení" className="mt-1 h-20 rounded-lg border border-line object-cover" />
+                  )}
                   <ul className="text-sm text-slate">
                     {solutionLines(e.type, e.payload).map((l, i) => (
                       <li key={i} className="break-words">
@@ -301,6 +438,20 @@ export default function ExercisesTab({ lesson, slug, sources, exercises, ai, rel
                 </button>
                 <button
                   type="button"
+                  aria-label={`Pokyn pre AI ku cvičeniu ${e.code}`}
+                  onClick={() => {
+                    setPromptFor(promptFor === e.id ? null : e.id);
+                    setPromptText("");
+                  }}
+                  className={cx(
+                    "shrink-0 size-8 inline-flex items-center justify-center rounded-lg hover:bg-ink/5",
+                    promptFor === e.id ? "text-sun-deep bg-sun-soft" : "text-slate",
+                  )}
+                >
+                  <Sparkles className="size-4" />
+                </button>
+                <button
+                  type="button"
                   aria-label={`Upraviť cvičenie: ${preview(e.type, e.payload).slice(0, 40)}`}
                   onClick={() => setEditing(e.id)}
                   className="shrink-0 size-8 inline-flex items-center justify-center rounded-lg text-slate hover:bg-ink/5"
@@ -315,6 +466,21 @@ export default function ExercisesTab({ lesson, slug, sources, exercises, ai, rel
                 >
                   <Trash2 className="size-4" />
                 </button>
+                </div>
+                {promptFor === e.id && (
+                  <div className="mt-2 sm:ml-6">
+                    <PromptBox
+                      presets={presets}
+                      value={promptText}
+                      onChange={setPromptText}
+                      onRun={(action) => runPrompt(e, action)}
+                      busy={promptBusy}
+                      disabled={!ai}
+                      label={`Pokyn pre AI ku cvičeniu ${e.code}`}
+                      hint={ai ? "Na iné cvičenie sa odvolaj jeho kódom." : "AI je vypnutá, chýba kľúč vo Verceli."}
+                    />
+                  </div>
+                )}
               </li>
             ),
           )}

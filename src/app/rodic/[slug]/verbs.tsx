@@ -3,7 +3,7 @@
 import { ArrowLeft, Camera, Loader2, Plus, Settings, Trash2, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Button, Card, ErrorNote, Input, Spinner, buttonClass, cx } from "@/components/ui";
+import { Button, Card, ErrorNote, Input, Spinner, buttonClass, cx, useBusyCursor } from "@/components/ui";
 import { subjectDef, type SubjectSlug } from "@/data/subjects";
 import { aiInfo, readVerbs, toJpegBase64 } from "@/lib/ai";
 import { loadVerbs } from "@/lib/data";
@@ -93,9 +93,11 @@ export default function VerbsAdmin({ slug }: { slug: SubjectSlug }) {
     setInfo("Nový riadok je na konci zoznamu, prepíš ho.");
   }
 
+  const working = queue.some((q) => q.state === "reading" || q.state === "waiting");
+  useBusyCursor(working);
+
   if (!verbs) return <Spinner />;
 
-  const working = queue.some((q) => q.state === "reading" || q.state === "waiting");
   const incomplete = verbs.filter((v) => !canTranslate(v) || !canForms(v)).length;
 
   return (
@@ -130,8 +132,8 @@ export default function VerbsAdmin({ slug }: { slug: SubjectSlug }) {
               e.target.value = "";
             }}
           />
-          <Button variant="sun" onClick={() => fileRef.current?.click()} disabled={!ai || working}>
-            <Camera className="size-4" /> {verbs.length ? "Pridať strany" : "Vybrať fotky"}
+          <Button variant="sun" onClick={() => fileRef.current?.click()} loading={working} disabled={!ai || working}>
+            {!working && <Camera className="size-4" />} {working ? "Čítam strany…" : verbs.length ? "Pridať strany" : "Vybrať fotky"}
           </Button>
         </div>
         {!ai && (

@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2, Volume2 } from "lucide-react";
+import { useEffect } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
@@ -36,11 +37,28 @@ type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; s
 
 export function Button({ variant = "primary", size = "md", loading, className, children, disabled, ...rest }: BtnProps) {
   return (
-    <button className={buttonClass(variant, size, className)} disabled={disabled || loading} {...rest}>
-      {loading && <Loader2 className="size-4 animate-spin" />}
+    <button
+      className={buttonClass(variant, size, cx(loading && "cursor-wait", className))}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...rest}
+    >
+      {loading && <Loader2 className="size-4 animate-spin shrink-0" />}
       {children}
     </button>
   );
+}
+
+/**
+ * Kým sa čaká na AI, drží celá stránka kurzor „čakaj“ — nielen tlačidlo,
+ * aby bolo vidno, že appka pracuje, aj keď medzitým rodič odišiel myšou inam.
+ */
+export function useBusyCursor(busy: boolean) {
+  useEffect(() => {
+    if (!busy) return;
+    document.body.classList.add("busy-cursor");
+    return () => document.body.classList.remove("busy-cursor");
+  }, [busy]);
 }
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {

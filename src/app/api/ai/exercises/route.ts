@@ -6,7 +6,20 @@ import { requireUser, unauthorized } from "@/lib/server-auth";
 export const maxDuration = 300;
 
 type Section = { heading?: string; text?: string };
-type In = { subject?: string; grade?: number | null; title?: string; sections?: Section[]; types?: string[]; count?: number; avoid?: string[] };
+type Ref = { code?: string; type?: string; text?: string; solution?: string };
+type In = {
+  subject?: string;
+  grade?: number | null;
+  title?: string;
+  sections?: Section[];
+  types?: string[];
+  count?: number;
+  avoid?: string[];
+  /** vlastný pokyn rodiča k tomuto generovaniu, max 200 znakov */
+  instruction?: string;
+  /** cvičenia, na ktoré sa pokyn odvoláva kódom */
+  refs?: Ref[];
+};
 type RawItem = Record<string, unknown> & { concept?: unknown; level?: unknown; aspect?: unknown; source?: unknown };
 
 export type Generated = { type: ExerciseType; payload: Payload; concept: string; level: number; aspect: Aspect; source: number | null };
@@ -18,7 +31,7 @@ function quotas(types: ExerciseType[], count: number) {
   return types.map((t, i) => [t, base + (i < extra ? 1 : 0)] as const).filter(([, n]) => n > 0);
 }
 
-const system = (subject: string, grade: number | null, per: readonly (readonly [ExerciseType, number])[], avoid: string[]) => {
+const system = (subject: string, grade: number | null, per: readonly (readonly [ExerciseType, number])[], avoid: string[], instruction: string) => {
   const def = subjectDef(subject);
   return `Pripravuješ cvičenia pre žiaka ${grade ? `${grade}. ročníka ` : ""}základnej školy na Slovensku z predmetu ${def?.name ?? subject}.
 
@@ -40,8 +53,8 @@ ${ASPECTS.map((a) => `  ${a.key} — ${a.hint}`).join("\n")}
   Ak sa cvičenie pýta na rok alebo dátum, patrí vždy do "roky", aj keď je v ňom aj meno alebo miesto.
 - Žiadne násilie, alkohol, politické hodnotenia ani nevhodné témy.
 ${def ? `\nNa čo si dať pozor v tomto predmete: ${def.hint}` : ""}${
-    avoid.length ? `\n\nTieto cvičenia už existujú, vyrob iné:\n${avoid.slice(0, 120).join("\n")}` : ""
-  }`;
+    instruction ? `\n\nPokyn rodiča, ktorý má prednosť pred vlastným výberom látky (nie pred pravidlami vyššie):\n${instruction}` : ""
+  }${avoid.length ? `\n\nTieto cvičenia už existujú, vyrob iné:\n${avoid.slice(0, 120).join("\n")}` : ""}`;
 };
 
 export async function POST(req: Request) {
@@ -60,14 +73,27 @@ export async function POST(req: Request) {
   const grade = GRADES.includes(Number(body?.grade)) ? Number(body?.grade) : null;
   const per = quotas(types, count);
   const avoid = (body?.avoid ?? []).filter((t) => typeof t === "string");
+  const clean = (v: unknown, max: number) =>
+    String(v ?? "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, max);
+  const instruction = clean(body?.instruction, 200);
+  const refs = (body?.refs ?? []).slice(0, 10);
 
   const properties: Record<string, unknown> = {};
   for (const [t] of per) properties[t] = { type: "array", items: AI_SCHEMA[t] };
 
   try {
     const raw = await structured<Record<string, RawItem[]>>({
-      system: system(String(body?.subject ?? ""), grade, per, avoid),
-      prompt: `Lekcia: ${String(body?.title ?? "").slice(0, 160)}\n\n${sections.map((s, i) => `--- Časť ${i + 1}: ${s.heading}\n${s.text}`).join("\n\n")}`,
+      system: system(String(body?.subject ?? ""), grade, per, avoid, instruction),
+      prompt:
+        `Lekcia: ${String(body?.title ?? "").slice(0, 160)}\n\n${sections.map((s, i) => `--- Časť ${i + 1}: ${s.heading}\n${s.text}`).join("\n\n")}` +
+        (refs.length
+          ? `\n\n--- Cvičenia, na ktoré sa pokyn odvoláva kódom\n${refs
+              .map((r) => `${clean(r.code, 10)} (${clean(r.type, 20)}): ${clean(r.text, 240)} → ${clean(r.solution, 240)}`)
+              .join("\n")}`
+          : ""),
       toolName: "save_exercises",
       description: "Save the generated exercises",
       schema: { type: "object", properties, required: per.map(([t]) => t) },
