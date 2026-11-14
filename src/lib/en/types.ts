@@ -56,6 +56,8 @@ export type Lesson = {
 
 export type VocabItem = {
   id: string;
+  /** krátky kód položky; rodič sa naň odvoláva v prompte pre AI */
+  code?: string | null;
   lesson_id: string;
   en: string;
   sk: string;
@@ -68,6 +70,8 @@ export type VocabItem = {
 
 export type GrammarItem = {
   id: string;
+  /** krátky kód položky; rodič sa naň odvoláva v prompte pre AI */
+  code?: string | null;
   lesson_id: string;
   prompt: string;
   answer: string;
@@ -85,6 +89,8 @@ export type TextUse = "reading" | "listening" | "writing";
 
 export type LessonText = {
   id: string;
+  /** krátky kód položky; rodič sa naň odvoláva v prompte pre AI */
+  code?: string | null;
   lesson_id: string;
   title: string | null;
   sentences: Sentence[];

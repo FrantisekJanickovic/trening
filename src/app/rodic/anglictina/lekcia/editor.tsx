@@ -12,13 +12,14 @@ import { effective, isPending } from "@/lib/en/sources";
 import { supabase } from "@/lib/supabase";
 import { normalize } from "@/lib/en/text";
 import type { Lesson, LessonSource, Sentence, SourceType, TextUse } from "@/lib/en/types";
+import AiPanel from "./ai-panel";
 import { ProblemsPanel } from "./problems";
 import { pl, SourceCard, UploadPanel, usePageImport } from "./sources";
 
-type VRow = { id: string; en: string; sk: string; example_en: string; example_sk: string; emoji: string; source_id: string | null };
-type GRow = { id: string; prompt: string; answer: string; options: string; translation_sk: string; explanation_sk: string; source_id: string | null };
+type VRow = { id: string; code?: string | null; en: string; sk: string; example_en: string; example_sk: string; emoji: string; source_id: string | null };
+type GRow = { id: string; code?: string | null; prompt: string; answer: string; options: string; translation_sk: string; explanation_sk: string; source_id: string | null };
 type SRow = { id: string; en: string; sk: string };
-type TRow = { id: string; title: string; sentences: SRow[]; uses: TextUse[]; source_id: string | null };
+type TRow = { id: string; code?: string | null; title: string; sentences: SRow[]; uses: TextUse[]; source_id: string | null };
 type Meta = { title: string; textbook: string; unit: string; grade: string; notes: string };
 type Deleted = { vocab: string[]; grammar: string[]; texts: string[] };
 type Snapshot = { meta: Meta; vocab: VRow[]; grammar: GRow[]; texts: TRow[]; deleted: Deleted };
@@ -163,6 +164,7 @@ export default function LessonEditor() {
       setVocab(
         c.vocab.map((v) => ({
           id: v.id,
+          code: v.code ?? null,
           en: v.en,
           sk: v.sk,
           example_en: v.example_en ?? "",
@@ -174,6 +176,7 @@ export default function LessonEditor() {
       setGrammar(
         c.grammar.map((g) => ({
           id: g.id,
+          code: g.code ?? null,
           prompt: g.prompt,
           answer: g.answer,
           options: (g.options ?? []).join(", "),
@@ -185,6 +188,7 @@ export default function LessonEditor() {
       setTexts(
         c.texts.map((t) => ({
           id: t.id,
+          code: t.code ?? null,
           title: t.title ?? "",
           sentences: withIds(t.sentences ?? []),
           uses: t.uses?.length ? t.uses : ["reading", "listening"],
@@ -243,6 +247,32 @@ export default function LessonEditor() {
   }
 
   const grade = meta.grade ? Number(meta.grade) : null;
+
+  // položky, na ktoré sa dá v prompte odvolať kódom, a čo už lekcia obsahuje
+  const known = [
+    ...vocab.filter((r) => r.code).map((r) => ({ code: r.code!, kind: "vocab" as const, text: `${r.en} – ${r.sk}` })),
+    ...grammar.filter((r) => r.code).map((r) => ({ code: r.code!, kind: "grammar" as const, text: `${r.prompt} → ${r.answer}` })),
+    ...texts.filter((r) => r.code).map((r) => ({ code: r.code!, kind: "text" as const, text: r.title || "text" })),
+  ];
+  const aiCtx = { ai, grade, title: meta.title, known, disabled: !!busy };
+
+  /** Čo z AI prišlo späť, prepíšeme do riadkov editora; uloží sa až s lekciou. */
+  const vRowFrom = (x: Record<string, unknown>, base?: VRow): VRow => ({
+    ...(base ?? emptyV()),
+    en: String(x.en ?? base?.en ?? ""),
+    sk: String(x.sk ?? base?.sk ?? ""),
+    example_en: String(x.example_en ?? base?.example_en ?? ""),
+    example_sk: String(x.example_sk ?? base?.example_sk ?? ""),
+    emoji: String(x.emoji ?? base?.emoji ?? ""),
+  });
+  const gRowFrom = (x: Record<string, unknown>, base?: GRow): GRow => ({
+    ...(base ?? emptyG()),
+    prompt: String(x.prompt ?? base?.prompt ?? ""),
+    answer: String(x.answer ?? base?.answer ?? ""),
+    options: Array.isArray(x.options) ? (x.options as string[]).join(", ") : String(x.options ?? base?.options ?? ""),
+    translation_sk: String(x.translation_sk ?? base?.translation_sk ?? ""),
+    explanation_sk: String(x.explanation_sk ?? base?.explanation_sk ?? ""),
+  });
 
   /** Writes the lesson and all its items; returns the lesson id. */
   async function persist(snap: Snapshot): Promise<string> {
@@ -731,6 +761,22 @@ export default function LessonEditor() {
           <div className="space-y-3">
             {vocab.map((r, i) => (
               <div key={r.id} className="rounded-2xl border border-line p-2 sm:p-2.5 space-y-2">
+                <AiPanel
+                  kind="vocab"
+                  code={r.code}
+                  label={r.en || "slovíčko"}
+                  {...aiCtx}
+                  target={{ en: r.en, sk: r.sk, example_en: r.example_en, example_sk: r.example_sk, emoji: r.emoji }}
+                  existing={vocab.filter((x) => x.en).map((x) => x.en)}
+                  onFixed={(f: Record<string, unknown>) => {
+                    setVocab((rows) => rows.map((x, j) => (j === i ? vRowFrom(f, x) : x)));
+                    dirty();
+                  }}
+                  onAdd={(items: Record<string, unknown>[]) => {
+                    setVocab((rows) => [...rows, ...items.map((x) => vRowFrom(x))]);
+                    dirty();
+                  }}
+                />
                 <div className="grid grid-cols-[1fr_1fr_48px_36px] sm:grid-cols-[1fr_1fr_56px_36px] gap-2">
                   <Input value={r.en} onChange={(e) => updV(i, "en", e.target.value)} placeholder="apple" autoCapitalize="off" aria-label="Anglicky" />
                   <Input value={r.sk} onChange={(e) => updV(i, "sk", e.target.value)} placeholder="jablko" aria-label="Slovensky" />
@@ -784,6 +830,23 @@ export default function LessonEditor() {
           )}
           {grammar.map((r, i) => (
             <div key={r.id} className="rounded-2xl border border-line p-3 space-y-2">
+              <AiPanel
+                kind="grammar"
+                code={r.code}
+                label={r.prompt || "cvičenie"}
+                {...aiCtx}
+                topic={topic}
+                target={{ prompt: r.prompt, answer: r.answer, options: r.options, translation_sk: r.translation_sk, explanation_sk: r.explanation_sk }}
+                existing={grammar.filter((x) => x.prompt).map((x) => x.prompt)}
+                onFixed={(f: Record<string, unknown>) => {
+                  setGrammar((rows) => rows.map((x, j) => (j === i ? gRowFrom(f, x) : x)));
+                  dirty();
+                }}
+                onAdd={(items: Record<string, unknown>[]) => {
+                  setGrammar((rows) => [...rows, ...items.map((x) => gRowFrom(x))]);
+                  dirty();
+                }}
+              />
               <div className="flex gap-2">
                 <Input value={r.prompt} onChange={(e) => updG(i, "prompt", e.target.value)} placeholder="She ___ got a cat." aria-label="Veta s medzerou" />
                 <button type="button" onClick={() => delG(i)} className="text-mist hover:text-tomato px-1" aria-label="Zmazať cvičenie">
@@ -833,6 +896,26 @@ export default function LessonEditor() {
           </div>
           {texts.map((t, ti) => (
             <div key={t.id} className="rounded-2xl border border-line p-3 space-y-2">
+              <AiPanel
+                kind="text"
+                code={t.code}
+                label={t.title || "text"}
+                {...aiCtx}
+                target={{ title: t.title, sentences: t.sentences.map((x) => ({ en: x.en, sk: x.sk })) }}
+                existing={texts.map((x) => x.title).filter(Boolean)}
+                onFixed={(f: Record<string, unknown>) => {
+                  const sent = Array.isArray(f.sentences) ? (f.sentences as { en?: string; sk?: string }[]) : [];
+                  setTexts((x) =>
+                    x.map((r, j) =>
+                      j === ti
+                        ? { ...r, title: String(f.title ?? r.title), sentences: withIds(sent.map((v) => ({ en: String(v.en ?? ""), sk: String(v.sk ?? "") }))) }
+                        : r,
+                    ),
+                  );
+                  dirty();
+                }}
+                onAdd={() => {}}
+              />
               <div className="flex gap-2">
                 <Input
                   value={t.title}
