@@ -4,7 +4,7 @@ import { cleanTypes, effective } from "@/lib/en/sources";
 
 export const maxDuration = 90;
 
-type Body = { label?: string; instruction?: string; content?: string; types?: string[]; grade?: number | null };
+type Body = { label?: string; instruction?: string; content?: string; types?: string[]; grade?: number | null; note?: string };
 type Pair = { en?: unknown; sk?: unknown };
 
 const RULES: Record<string, string> = {
@@ -45,7 +45,9 @@ ${gradeNote(body?.grade)}
 ${STYLE}
 Use only the content of this exercise; do not invent unrelated material. Square brackets describe pictures on the page.
 Return these parts:
-${keys.map((k) => `- ${RULES[k]}`).join("\n")}`;
+${keys.map((k) => `- ${RULES[k]}`).join("\n")}${
+    s(body?.note, 200) ? `\n\nThe parent asked for this, follow it as long as it does not break the rules above:\n${s(body?.note, 200)}` : ""
+  }`;
 
   try {
     const raw = await structured<{ vocab?: unknown; grammar?: unknown; text?: { title?: unknown; sentences?: unknown }; writing?: unknown }>({

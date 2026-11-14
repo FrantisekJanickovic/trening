@@ -112,6 +112,10 @@ export default function LessonEditor() {
   const [saved, setSaved] = useState(false);
   const [paste, setPaste] = useState<string | null>(null);
   const [topic, setTopic] = useState("");
+  // vlastný pokyn rodiča k jednému cvičeniu zo strany učebnice
+  const [srcNotes, setSrcNotes] = useState<Record<string, string>>({});
+  // riadky, ktoré AI práve zmenila alebo pridala — nech ich rodič nájde
+  const [flash, setFlash] = useState<string[]>([]);
   const [textPaste, setTextPaste] = useState("");
   const [problemCount, setProblemCount] = useState(0);
 
@@ -255,6 +259,16 @@ export default function LessonEditor() {
     ...texts.filter((r) => r.code).map((r) => ({ code: r.code!, kind: "text" as const, text: r.title || "text" })),
   ];
   const aiCtx = { ai, grade, title: meta.title, known, disabled: !!busy };
+
+  /** Zvýrazní riadky a posunie na ne pohľad, nech je po zásahu AI vidieť, čo sa stalo. */
+  function highlight(ids: string[]) {
+    setFlash(ids);
+    setTimeout(() => {
+      document.getElementById(`row-${ids[0]}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+    setTimeout(() => setFlash((f) => (f === ids ? [] : f)), 6000);
+  }
+  const flashClass = (id: string) => (flash.includes(id) ? "border-sun ring-2 ring-sun/40" : "border-line");
 
   /** Čo z AI prišlo späť, prepíšeme do riadkov editora; uloží sa až s lekciou. */
   const vRowFrom = (x: Record<string, unknown>, base?: VRow): VRow => ({
@@ -447,7 +461,9 @@ export default function LessonEditor() {
     await pool(targets, 3, async (src) => {
       try {
         const eff = effective(src.types);
-        const data = eff.length ? await buildFromSource({ label: src.label, instruction: src.instruction, content: src.content, types: eff }, grade) : null;
+        const data = eff.length
+          ? await buildFromSource({ label: src.label, instruction: src.instruction, content: src.content, types: eff }, grade, srcNotes[src.id])
+          : null;
         results.set(src.id, { types: src.types, data });
       } catch (e) {
         errs[src.id] = e instanceof Error ? e.message : "Neznáma chyba";
@@ -705,7 +721,7 @@ export default function LessonEditor() {
           {pages.map((p) => {
             const list = sources.filter((s) => s.page === p);
             return (
-              <section key={p} className="space-y-3" aria-label={`Strana ${p}`}>
+              <section key={p} className="space-y-4" aria-label={`Strana ${p}`}>
                 <h2 className="text-lg font-black">
                   Strana {p}{" "}
                   <span className="text-sm font-bold text-slate">
@@ -713,7 +729,17 @@ export default function LessonEditor() {
                   </span>
                 </h2>
                 {list.map((s) => (
-                  <SourceCard key={s.id} src={s} made={madeFor(s.id)} error={buildErrors[s.id]} disabled={!!busy} onTypes={(t) => setSourceTypes(s.id, t)} />
+                  <SourceCard
+                    key={s.id}
+                    src={s}
+                    made={madeFor(s.id)}
+                    error={buildErrors[s.id]}
+                    disabled={!!busy}
+                    onTypes={(t) => setSourceTypes(s.id, t)}
+                    note={srcNotes[s.id] ?? ""}
+                    onNote={(v) => setSrcNotes((n) => ({ ...n, [s.id]: v }))}
+                    ai={ai}
+                  />
                 ))}
               </section>
             );
@@ -760,7 +786,7 @@ export default function LessonEditor() {
           </div>
           <div className="space-y-3">
             {vocab.map((r, i) => (
-              <div key={r.id} className="rounded-2xl border border-line p-2 sm:p-2.5 space-y-2">
+              <div key={r.id} id={`row-${r.id}`} className={cx("rounded-2xl border-2 bg-paper/50 p-3 space-y-2 transition-colors", flashClass(r.id))}>
                 <AiPanel
                   kind="vocab"
                   code={r.code}
@@ -770,10 +796,13 @@ export default function LessonEditor() {
                   existing={vocab.filter((x) => x.en).map((x) => x.en)}
                   onFixed={(f: Record<string, unknown>) => {
                     setVocab((rows) => rows.map((x, j) => (j === i ? vRowFrom(f, x) : x)));
+                    highlight([r.id]);
                     dirty();
                   }}
                   onAdd={(items: Record<string, unknown>[]) => {
-                    setVocab((rows) => [...rows, ...items.map((x) => vRowFrom(x))]);
+                    const added = items.map((x) => vRowFrom(x));
+                    setVocab((rows) => [...rows.slice(0, i + 1), ...added, ...rows.slice(i + 1)]);
+                    highlight(added.map((x) => x.id));
                     dirty();
                   }}
                 />
@@ -829,7 +858,7 @@ export default function LessonEditor() {
             </div>
           )}
           {grammar.map((r, i) => (
-            <div key={r.id} className="rounded-2xl border border-line p-3 space-y-2">
+            <div key={r.id} id={`row-${r.id}`} className={cx("rounded-2xl border-2 bg-paper/50 p-3 space-y-2 transition-colors", flashClass(r.id))}>
               <AiPanel
                 kind="grammar"
                 code={r.code}
@@ -840,10 +869,13 @@ export default function LessonEditor() {
                 existing={grammar.filter((x) => x.prompt).map((x) => x.prompt)}
                 onFixed={(f: Record<string, unknown>) => {
                   setGrammar((rows) => rows.map((x, j) => (j === i ? gRowFrom(f, x) : x)));
+                  highlight([r.id]);
                   dirty();
                 }}
                 onAdd={(items: Record<string, unknown>[]) => {
-                  setGrammar((rows) => [...rows, ...items.map((x) => gRowFrom(x))]);
+                  const added = items.map((x) => gRowFrom(x));
+                  setGrammar((rows) => [...rows.slice(0, i + 1), ...added, ...rows.slice(i + 1)]);
+                  highlight(added.map((x) => x.id));
                   dirty();
                 }}
               />
@@ -895,7 +927,7 @@ export default function LessonEditor() {
             </Button>
           </div>
           {texts.map((t, ti) => (
-            <div key={t.id} className="rounded-2xl border border-line p-3 space-y-2">
+            <div key={t.id} id={`row-${t.id}`} className={cx("rounded-2xl border-2 bg-paper/50 p-3 space-y-2 transition-colors", flashClass(t.id))}>
               <AiPanel
                 kind="text"
                 code={t.code}
@@ -904,6 +936,7 @@ export default function LessonEditor() {
                 target={{ title: t.title, sentences: t.sentences.map((x) => ({ en: x.en, sk: x.sk })) }}
                 existing={texts.map((x) => x.title).filter(Boolean)}
                 onFixed={(f: Record<string, unknown>) => {
+                  highlight([t.id]);
                   const sent = Array.isArray(f.sentences) ? (f.sentences as { en?: string; sk?: string }[]) : [];
                   setTexts((x) =>
                     x.map((r, j) =>

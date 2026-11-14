@@ -48,8 +48,9 @@ export async function segmentPhoto(file: File, grade?: number | null): Promise<P
 export async function buildFromSource(
   src: { label: string | null; instruction: string | null; content: string; types: SourceType[] },
   grade?: number | null,
+  note?: string,
 ): Promise<BuildResult> {
-  return post<BuildResult>("/api/en/build", { ...src, grade });
+  return post<BuildResult>("/api/en/build", { ...src, grade, note });
 }
 
 export async function enrichVocab(items: DraftVocab[], grade?: number | null) {
