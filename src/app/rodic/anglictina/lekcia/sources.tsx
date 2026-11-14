@@ -3,6 +3,7 @@
 import { AlertCircle, Camera, Check, Loader2, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { TypeTags } from "@/components/en/type-tags";
+import PromptBox from "@/components/prompt-box";
 import { Button, Card, cx, ErrorNote } from "@/components/ui";
 import { segmentPhoto, type PageResult } from "@/lib/en/ai";
 import { sameSet, sourceStatus, sourceTypeLabel, type SourceStatus } from "@/lib/en/sources";
@@ -175,24 +176,43 @@ export function UploadPanel({
   );
 }
 
+const SOURCE_PRESETS = [
+  { key: "lenslova", label: "Len slovíčka", fill: "Z tohto cvičenia rob len slovíčka, vety ani gramatiku nevyrábaj." },
+  { key: "lahsie", label: "Jednoduchšie", fill: "Píš kratšie vety a jednoduchšie slová, je to pre mladšie dieťa." },
+  { key: "cleny", label: "Aj s členmi", fill: "Pri podstatných menách nechaj člen (a, an, the) tak, ako je v učebnici." },
+];
+
 export function SourceCard({
   src,
   made,
   error,
   disabled,
   onTypes,
+  note,
+  onNote,
+  ai,
 }: {
   src: LessonSource;
   made: string;
   error?: string;
   disabled: boolean;
   onTypes: (t: SourceType[]) => void;
+  /** vlastný pokyn rodiča, ktorý ide do AI spolu s týmto cvičením */
+  note?: string;
+  onNote?: (v: string) => void;
+  ai?: boolean;
 }) {
   const st = sourceStatus(src);
   const label = src.label || "Cvičenie";
   const changedFromAi = src.suggested.length > 0 && !sameSet(src.types, src.suggested);
   return (
-    <Card className={cx("p-4 sm:p-5 space-y-3", st.tone === "skip" && "bg-card/70")}>
+    <Card
+      className={cx(
+        // farebný pruh zľava a silnejší rámik, nech je vidieť, kde cvičenie začína a končí
+        "p-4 sm:p-5 space-y-3 border-2 border-l-8",
+        st.tone === "done" ? "border-leaf/40 border-l-leaf" : st.tone === "skip" ? "bg-card/70 border-line border-l-mist" : "border-sky/40 border-l-sky",
+      )}
+    >
       <div className="flex flex-wrap items-start gap-3">
         <span className="shrink-0 min-w-9 h-9 px-2.5 rounded-xl bg-ink text-white font-black text-sm inline-flex items-center justify-center">{label}</span>
         <div className="flex-1 min-w-48">
@@ -211,6 +231,18 @@ export function SourceCard({
         aria-label={`Prepis cvičenia ${label}`}
         className="w-full rounded-xl border-2 border-line bg-paper px-3 py-2.5 text-[15px] leading-relaxed text-ink resize-y outline-none focus:border-mist cursor-default"
       />
+      {onNote && src.types.length > 0 && !src.types.includes("skip") && (
+        <PromptBox
+          presets={SOURCE_PRESETS}
+          mode="fill"
+          value={note ?? ""}
+          onChange={onNote}
+          disabled={disabled || !ai}
+          label={`Pokyn pre AI k cvičeniu ${label}`}
+          hint="Nepovinné. Použije sa pri vytváraní cvičení z tohto zadania."
+          placeholder="napr. ber len slová z obrázkov"
+        />
+      )}
       <div>
         <span className="block text-sm font-bold text-ink-soft mb-1.5" id={`types-${src.id}`}>
           Typ cvičenia
