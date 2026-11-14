@@ -9,8 +9,9 @@ import { Button, Card, ErrorNote, Spinner, cx } from "@/components/ui";
 import { subjectDef, type SubjectSlug } from "@/data/subjects";
 import { cheer } from "@/lib/cheer";
 import { loadConfig } from "@/lib/config";
-import { getChild, loadExercises, loadProgress, loadSets, loadSourcesFor } from "@/lib/data";
-import { explainOf, isCorrect, matchesYears, preview, solutionLines, typeLabel, type Answer } from "@/lib/exercises";
+import { getChild, loadExercises, loadFiguresByIds, loadProgress, loadSets, loadSourcesFor } from "@/lib/data";
+import { explainOf, figureOf, isCorrect, matchesYears, preview, solutionLines, typeLabel, type Answer } from "@/lib/exercises";
+import { figureUrls } from "@/lib/figures";
 import { decodePages, filterByPages } from "@/lib/pages";
 import { buildPlan, COUNTS } from "@/lib/plan";
 import { progressUpdates, type Tally } from "@/lib/progress";
@@ -140,6 +141,15 @@ function Training({
     setFontState(s);
     saveFontStep(s);
   };
+  // podpísané adresy k obrázkom, ktoré rodič pripol k cvičeniam
+  const [figureUrl, setFigureUrl] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const ids = [...new Set(plan.map((e) => figureOf(e.payload)).filter(Boolean))] as string[];
+    if (!ids.length) return;
+    loadFiguresByIds(ids)
+      .then(async (f) => setFigureUrl(await figureUrls(f)))
+      .catch(() => {});
+  }, [plan]);
   const results = useRef(new Map<string, boolean>());
   const streak = useRef(0);
   const startedAt = useRef(0);
@@ -312,6 +322,14 @@ function Training({
       <p className="text-center text-sm font-bold text-mist mt-1">{typeLabel(ex.type)}</p>
 
       <div className="flex-1 flex flex-col gap-4 py-3 ex-zoom" style={fontScaleStyle(font)}>
+        {figureOf(ex.payload) && figureUrl[figureOf(ex.payload)!] && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={figureUrl[figureOf(ex.payload)!]}
+            alt="Obrázok k otázke"
+            className="w-full max-h-56 object-contain rounded-2xl border-2 border-line bg-card"
+          />
+        )}
         <Player key={ex.id} payload={ex.payload} done={!!answer} onSubmit={submit} />
 
         {answer && (

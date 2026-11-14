@@ -4,14 +4,15 @@ import { ArrowLeft, Camera, Loader2, Sparkles, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, ErrorNote, Field, Input, Segmented, Spinner, Textarea, cx } from "@/components/ui";
+import PromptBox, { type Preset } from "@/components/prompt-box";
+import { Button, Card, ErrorNote, Field, Input, Segmented, Spinner, Textarea, cx, useBusyCursor } from "@/components/ui";
 import { GRADES, gradeLabel, subjectDef, type SubjectSlug } from "@/data/subjects";
-import { aiInfo, generateExercises, toJpegBase64, transcribe } from "@/lib/ai";
+import { aiInfo, generateExercises, toJpegBase64, transcribe, type ExerciseRef } from "@/lib/ai";
 import { DEFAULT_CONFIG, loadConfig } from "@/lib/config";
 import { getLesson, loadExercises, loadSources } from "@/lib/data";
 import { runFactcheck } from "@/lib/factcheck";
 import { cropFigures, saveFigures } from "@/lib/figures";
-import { TYPES, preview } from "@/lib/exercises";
+import { TYPES, codesIn, preview, solution } from "@/lib/exercises";
 import { supabase } from "@/lib/supabase";
 import type { Exercise, Lesson, Source, SubjectConfig } from "@/lib/types";
 import ExercisesTab from "./exercises-tab";
@@ -20,6 +21,13 @@ import Mindmaps from "./mindmaps";
 
 type Queue = { key: string; name: string; state: "waiting" | "reading" | "done" | "error"; note?: string };
 const LAST_GRADE = "trening.lastGrade";
+
+/** Pokyny, ktoré sa pri generovaní hodia najčastejšie — kliknutím sa doplnia do poľa. */
+const GEN_PRESETS: Preset[] = [
+  { key: "pojmy", label: "Zameraj sa na pojmy", fill: "Zameraj sa na pojmy a ich význam, letopočty vynechaj." },
+  { key: "letopocty", label: "Viac otázok na letopočty", fill: "Daj viac otázok na letopočty a poradie udalostí." },
+  { key: "lahsie", label: "Jednoduchší jazyk", fill: "Píš kratšie vety a jednoduchšie slová, cvičenia drž ľahké." },
+];
 
 export default function LessonEditor() {
   const slug = String(useParams().slug) as SubjectSlug;
@@ -42,6 +50,7 @@ export default function LessonEditor() {
   const [info, setInfo] = useState<string | null>(null);
   const [count, setCount] = useState(20);
   const [fromSources, setFromSources] = useState<string[]>([]);
+  const [instruction, setInstruction] = useState("");
   const [figureCount, setFigureCount] = useState(0);
   const [loaded, setLoaded] = useState(!lessonId);
 
@@ -181,6 +190,14 @@ export default function LessonEditor() {
       const types = TYPES.filter((t) => config.types[t.key]).map((t) => t.key);
       // keď si rodič vybral len niektoré časti, cvičenia vzniknú iba z nich
       const used = fromSources.length ? sources.filter((s) => fromSources.includes(s.id)) : sources;
+      // keď sa rodič v pokyne odvolal na cvičenie kódom, pošleme ho AI ako vzor
+      const known = new Map(exercises.map((e) => [e.code, e]));
+      const refs: ExerciseRef[] = codesIn(instruction)
+        .filter((c) => known.has(c))
+        .map((c) => {
+          const e = known.get(c)!;
+          return { code: e.code, type: e.type, text: preview(e.type, e.payload), solution: solution(e.type, e.payload) };
+        });
       const r = await generateExercises({
         subject: slug,
         grade: lesson.grade,
@@ -189,6 +206,8 @@ export default function LessonEditor() {
         types,
         count,
         avoid: exercises.map((e) => preview(e.type, e.payload).slice(0, 120)),
+        instruction: instruction.trim(),
+        refs,
       });
       const rows = r.exercises.map((x, i) => ({
         lesson_id: lesson.id,
@@ -241,9 +260,10 @@ export default function LessonEditor() {
     router.push(`/rodic/${slug}`);
   }
 
-  if (!loaded) return <Spinner />;
-
   const working = queue.some((q) => q.state === "reading" || q.state === "waiting");
+  useBusyCursor(!!busy || working);
+
+  if (!loaded) return <Spinner />;
 
   return (
     <div className="space-y-5 max-w-3xl">
@@ -321,8 +341,8 @@ export default function LessonEditor() {
                 e.target.value = "";
               }}
             />
-            <Button variant="sun" onClick={() => fileRef.current?.click()} disabled={!ai || working}>
-              <Camera className="size-4" /> {sources.length ? "Pridať strany" : "Vybrať fotky"}
+            <Button variant="sun" onClick={() => fileRef.current?.click()} loading={working} disabled={!ai || working}>
+              {!working && <Camera className="size-4" />} {working ? "Čítam strany…" : sources.length ? "Pridať strany" : "Vybrať fotky"}
             </Button>
           </div>
           {!ai && (
@@ -408,6 +428,19 @@ export default function LessonEditor() {
           )}
 
           {sources.length > 0 && (
+            <PromptBox
+              presets={GEN_PRESETS}
+              mode="fill"
+              value={instruction}
+              onChange={setInstruction}
+              disabled={!ai || !!busy}
+              label="Pokyn pre AI k tomuto generovaniu"
+              hint="Nepovinné. Na existujúce cvičenie sa odvolaj jeho kódom, napríklad „sprav podobné ako A3F7K2“."
+              placeholder="napr. zameraj sa na letopočty a mená panovníkov"
+            />
+          )}
+
+          {sources.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
               <Button variant="primary" onClick={generate} loading={busy === "generate"} disabled={!ai || !!busy}>
                 <Sparkles className="size-4" /> Generovať cvičenia
@@ -435,6 +468,7 @@ export default function LessonEditor() {
           slug={slug}
           sources={sources}
           exercises={exercises}
+          config={config}
           ai={ai}
           reload={() => reload(lesson.id)}
           onWantMore={() => setTab("material")}

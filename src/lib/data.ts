@@ -67,6 +67,14 @@ export async function loadFigures(lessonIds: string[]): Promise<Figure[]> {
   return (data ?? []) as Figure[];
 }
 
+/** Obrázky podľa id — pre cvičenia, ktoré majú pripnutý obrázok z galérie. */
+export async function loadFiguresByIds(ids: string[]): Promise<Figure[]> {
+  if (!ids.length) return [];
+  const { data, error } = await supabase().from("tr_figures").select("*").in("id", ids).limit(200);
+  if (error) throw error;
+  return (data ?? []) as Figure[];
+}
+
 export async function loadSets(lessonIds: string[], onlyActive = false): Promise<ExerciseSet[]> {
   if (!lessonIds.length) return [];
   let q = supabase().from("tr_sets").select("*").in("lesson_id", lessonIds).order("position").limit(200);

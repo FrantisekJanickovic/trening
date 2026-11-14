@@ -177,3 +177,8 @@ body {
   from { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
   to { transform: translateY(105vh) rotate(540deg); opacity: 0.2; }
 }
+
+/* kým appka čaká na AI */
+body.busy-cursor, body.busy-cursor * {
+  cursor: wait !important;
+}

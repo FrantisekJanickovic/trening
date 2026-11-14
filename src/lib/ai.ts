@@ -69,6 +69,9 @@ export const generateTimeline = (input: AidInput) => post<{ timeline: TimelineDa
 export const factcheck = (input: { subject: SubjectSlug; grade: number | null; title: string; sections: Section[]; items: { id: string; text: string }[] }) =>
   post<{ results: { id: string; ok: boolean; note: string }[]; missing: string[] }>("/api/ai/factcheck", input);
 
+/** Cvičenie, na ktoré sa rodič odvolal kódom v prompte. */
+export type ExerciseRef = { code: string; type: string; text: string; solution: string };
+
 export const generateExercises = (input: {
   subject: SubjectSlug;
   grade: number | null;
@@ -77,4 +80,24 @@ export const generateExercises = (input: {
   types: ExerciseType[];
   count: number;
   avoid?: string[];
+  instruction?: string;
+  refs?: ExerciseRef[];
 }) => post<{ exercises: Generated[] }>("/api/ai/exercises", input);
+
+export type Revised = { type: ExerciseType; payload: Payload; concept: string; level: number };
+export type Revision = { note: string; fixed: { payload: Payload; concept: string } | null; added: Revised[]; figure: string | null };
+
+/** Pokyn rodiča v kontexte jedného cvičenia: oprava, nové typy, variácie alebo obrázok. */
+export const reviseExercise = (input: {
+  subject: SubjectSlug;
+  grade: number | null;
+  title: string;
+  sections: Section[];
+  types: ExerciseType[];
+  count: number;
+  action: string;
+  instruction: string;
+  target: ExerciseRef & { concept: string; payload: Payload };
+  refs?: ExerciseRef[];
+  figures?: { id: string; caption: string; explain: string }[];
+}) => post<Revision>("/api/ai/revise", input);

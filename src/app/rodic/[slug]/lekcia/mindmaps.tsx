@@ -4,7 +4,7 @@ import { CalendarRange, Eye, Network, Sparkles, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { MapDownloads, MindmapOverlay } from "@/components/mindmap-view";
 import { PagePicker } from "@/components/pages-picker";
-import { Button, ErrorNote, Field, Textarea, cx } from "@/components/ui";
+import { Button, ErrorNote, Field, Textarea, cx, useBusyCursor } from "@/components/ui";
 import type { SubjectSlug } from "@/data/subjects";
 import { generateMindmap, generateTimeline } from "@/lib/ai";
 import { loadMindmaps } from "@/lib/data";
@@ -22,6 +22,8 @@ export default function Mindmaps({ lesson, sources, slug, ai }: { lesson: Lesson
   const [busy, setBusy] = useState<"mindmap" | "timeline" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<Mindmap | null>(null);
+
+  useBusyCursor(!!busy);
 
   const reload = useCallback(() => loadMindmaps([lesson.id]).then(setMaps), [lesson.id]);
   useEffect(() => {
