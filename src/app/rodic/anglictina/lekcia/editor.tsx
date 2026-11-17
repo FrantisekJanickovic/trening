@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Check, ClipboardPaste, Plus, Sparkles, Trash2, Wand2, X } from "lucide-react";
+import { ArrowLeft, Check, ClipboardPaste, Eye, EyeOff, Plus, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -11,15 +11,16 @@ import { GRADES, gradeLabel } from "@/lib/en/settings";
 import { effective, isPending } from "@/lib/en/sources";
 import { supabase } from "@/lib/supabase";
 import { normalize } from "@/lib/en/text";
-import type { Lesson, LessonSource, Sentence, SourceType, TextUse } from "@/lib/en/types";
+import type { Lesson, LessonSource, Sentence, SetItem, SourceType, TextUse } from "@/lib/en/types";
 import AiPanel from "./ai-panel";
+import SetsPanel from "./sets";
 import { ProblemsPanel } from "./problems";
 import { pl, SourceCard, UploadPanel, usePageImport } from "./sources";
 
-type VRow = { id: string; code?: string | null; en: string; sk: string; example_en: string; example_sk: string; emoji: string; source_id: string | null };
-type GRow = { id: string; code?: string | null; prompt: string; answer: string; options: string; translation_sk: string; explanation_sk: string; source_id: string | null };
+type VRow = { id: string; code?: string | null; enabled?: boolean; en: string; sk: string; example_en: string; example_sk: string; emoji: string; source_id: string | null };
+type GRow = { id: string; code?: string | null; enabled?: boolean; prompt: string; answer: string; options: string; translation_sk: string; explanation_sk: string; source_id: string | null };
 type SRow = { id: string; en: string; sk: string };
-type TRow = { id: string; code?: string | null; title: string; sentences: SRow[]; uses: TextUse[]; source_id: string | null };
+type TRow = { id: string; code?: string | null; enabled?: boolean; title: string; sentences: SRow[]; uses: TextUse[]; source_id: string | null };
 type Meta = { title: string; textbook: string; unit: string; grade: string; notes: string };
 type Deleted = { vocab: string[]; grammar: string[]; texts: string[] };
 type Snapshot = { meta: Meta; vocab: VRow[]; grammar: GRow[]; texts: TRow[]; deleted: Deleted };
@@ -116,6 +117,8 @@ export default function LessonEditor() {
   const [srcNotes, setSrcNotes] = useState<Record<string, string>>({});
   // riadky, ktoré AI práve zmenila alebo pridala — nech ich rodič nájde
   const [flash, setFlash] = useState<string[]>([]);
+  // položky zaškrtnuté do novej sady
+  const [picked, setPicked] = useState<SetItem[]>([]);
   const [textPaste, setTextPaste] = useState("");
   const [problemCount, setProblemCount] = useState(0);
 
@@ -169,6 +172,7 @@ export default function LessonEditor() {
         c.vocab.map((v) => ({
           id: v.id,
           code: v.code ?? null,
+          enabled: v.enabled !== false,
           en: v.en,
           sk: v.sk,
           example_en: v.example_en ?? "",
@@ -181,6 +185,7 @@ export default function LessonEditor() {
         c.grammar.map((g) => ({
           id: g.id,
           code: g.code ?? null,
+          enabled: g.enabled !== false,
           prompt: g.prompt,
           answer: g.answer,
           options: (g.options ?? []).join(", "),
@@ -193,6 +198,7 @@ export default function LessonEditor() {
         c.texts.map((t) => ({
           id: t.id,
           code: t.code ?? null,
+          enabled: t.enabled !== false,
           title: t.title ?? "",
           sentences: withIds(t.sentences ?? []),
           uses: t.uses?.length ? t.uses : ["reading", "listening"],
@@ -270,6 +276,34 @@ export default function LessonEditor() {
   }
   const flashClass = (id: string) => (flash.includes(id) ? "border-sun ring-2 ring-sun/40" : "border-line");
 
+  const isPicked = (kind: SetItem["kind"], id: string) => picked.some((p) => p.kind === kind && p.id === id);
+  const togglePick = (kind: SetItem["kind"], id: string) =>
+    setPicked((cur) => (isPicked(kind, id) ? cur.filter((p) => !(p.kind === kind && p.id === id)) : [...cur, { kind, id }]));
+
+  /** Hlavička položky: výber do sady, kód a vypínač. */
+  function ItemBar({ kind, id, code, label, enabled, onToggle }: { kind: SetItem["kind"]; id: string; code?: string | null; label: string; enabled: boolean; onToggle: () => void }) {
+    return (
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          className="size-4 shrink-0 accent-[#1b2559]"
+          checked={isPicked(kind, id)}
+          aria-label={`Vybrať do sady: ${label}`}
+          onChange={() => togglePick(kind, id)}
+        />
+        <button
+          type="button"
+          aria-label={`${enabled ? "Vypnúť" : "Zapnúť"} položku ${code ?? label}`}
+          onClick={onToggle}
+          className={cx("size-7 inline-flex items-center justify-center rounded-lg hover:bg-ink/5", enabled ? "text-slate" : "text-tomato bg-tomato-soft")}
+        >
+          {enabled ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+        </button>
+        {!enabled && <span className="text-xs font-black text-tomato">mimo tréningu</span>}
+      </div>
+    );
+  }
+
   /** Čo z AI prišlo späť, prepíšeme do riadkov editora; uloží sa až s lekciou. */
   const vRowFrom = (x: Record<string, unknown>, base?: VRow): VRow => ({
     ...(base ?? emptyV()),
@@ -324,6 +358,7 @@ export default function LessonEditor() {
         example_en: r.example_en.trim() || null,
         example_sk: r.example_sk.trim() || null,
         emoji: r.emoji.trim() || null,
+        enabled: r.enabled !== false,
         position: i,
         source_id: r.source_id,
       }));
@@ -345,6 +380,7 @@ export default function LessonEditor() {
           options: opts,
           translation_sk: r.translation_sk.trim() || null,
           explanation_sk: r.explanation_sk.trim() || null,
+          enabled: r.enabled !== false,
           position: i,
           source_id: r.source_id,
         };
@@ -356,6 +392,7 @@ export default function LessonEditor() {
         title: r.title.trim() || null,
         sentences: r.sentences.filter((s) => s.en.trim()).map((s) => ({ id: s.id, en: s.en.trim(), sk: s.sk.trim() })),
         uses: r.uses,
+        enabled: r.enabled !== false,
         position: i,
         source_id: r.source_id,
       }))
@@ -448,8 +485,13 @@ export default function LessonEditor() {
   }
 
   /** Generate practice items for every exercise whose types changed, replace its old items and save. */
-  async function createFromSources() {
-    const targets = sources.filter(isPending);
+  async function createFromSources(only?: string) {
+    // Hromadné tlačidlo berie len cvičenia, ktoré ešte treba vyrobiť.
+    // Keď rodič klikne na jedno konkrétne cvičenie, vyrobíme ho znova aj vtedy,
+    // keď už cvičenia malo — presne preto, aby platil jeho nový pokyn pre AI.
+    const targets = only
+      ? sources.filter((x) => x.id === only && effective(x.types).length > 0)
+      : sources.filter(isPending);
     if (!targets.length) return;
     setError(null);
     setNote(null);
@@ -738,6 +780,8 @@ export default function LessonEditor() {
                     onTypes={(t) => setSourceTypes(s.id, t)}
                     note={srcNotes[s.id] ?? ""}
                     onNote={(v) => setSrcNotes((n) => ({ ...n, [s.id]: v }))}
+                    onBuild={() => createFromSources(s.id)}
+                    building={!!busy}
                     ai={ai}
                   />
                 ))}
@@ -786,7 +830,22 @@ export default function LessonEditor() {
           </div>
           <div className="space-y-3">
             {vocab.map((r, i) => (
-              <div key={r.id} id={`row-${r.id}`} className={cx("rounded-2xl border-2 bg-paper/50 p-3 space-y-2 transition-colors", flashClass(r.id))}>
+              <div
+                key={r.id}
+                id={`row-${r.id}`}
+                className={cx("rounded-2xl border-2 bg-paper/50 p-3 space-y-2 transition-colors", flashClass(r.id), r.enabled === false && "opacity-60")}
+              >
+                <ItemBar
+                  kind="vocab"
+                  id={r.id}
+                  code={r.code}
+                  label={r.en || "slovíčko"}
+                  enabled={r.enabled !== false}
+                  onToggle={() => {
+                    setVocab((rows) => rows.map((x, j) => (j === i ? { ...x, enabled: x.enabled === false } : x)));
+                    dirty();
+                  }}
+                />
                 <div className="grid grid-cols-[1fr_1fr_48px_36px] sm:grid-cols-[1fr_1fr_56px_36px] gap-2">
                   <Input value={r.en} onChange={(e) => updV(i, "en", e.target.value)} placeholder="apple" autoCapitalize="off" aria-label="Anglicky" />
                   <Input value={r.sk} onChange={(e) => updV(i, "sk", e.target.value)} placeholder="jablko" aria-label="Slovensky" />
@@ -859,7 +918,22 @@ export default function LessonEditor() {
             </div>
           )}
           {grammar.map((r, i) => (
-            <div key={r.id} id={`row-${r.id}`} className={cx("rounded-2xl border-2 bg-paper/50 p-3 space-y-2 transition-colors", flashClass(r.id))}>
+            <div
+              key={r.id}
+              id={`row-${r.id}`}
+              className={cx("rounded-2xl border-2 bg-paper/50 p-3 space-y-2 transition-colors", flashClass(r.id), r.enabled === false && "opacity-60")}
+            >
+              <ItemBar
+                kind="grammar"
+                id={r.id}
+                code={r.code}
+                label={r.prompt || "cvičenie"}
+                enabled={r.enabled !== false}
+                onToggle={() => {
+                  setGrammar((rows) => rows.map((x, j) => (j === i ? { ...x, enabled: x.enabled === false } : x)));
+                  dirty();
+                }}
+              />
               <div className="flex gap-2">
                 <Input value={r.prompt} onChange={(e) => updG(i, "prompt", e.target.value)} placeholder="She ___ got a cat." aria-label="Veta s medzerou" />
                 <button type="button" onClick={() => delG(i)} className="text-mist hover:text-tomato px-1" aria-label="Zmazať cvičenie">
@@ -929,7 +1003,22 @@ export default function LessonEditor() {
             </Button>
           </div>
           {texts.map((t, ti) => (
-            <div key={t.id} id={`row-${t.id}`} className={cx("rounded-2xl border-2 bg-paper/50 p-3 space-y-2 transition-colors", flashClass(t.id))}>
+            <div
+              key={t.id}
+              id={`row-${t.id}`}
+              className={cx("rounded-2xl border-2 bg-paper/50 p-3 space-y-2 transition-colors", flashClass(t.id), t.enabled === false && "opacity-60")}
+            >
+              <ItemBar
+                kind="text"
+                id={t.id}
+                code={t.code}
+                label={t.title || "text"}
+                enabled={t.enabled !== false}
+                onToggle={() => {
+                  setTexts((x) => x.map((r, j) => (j === ti ? { ...r, enabled: r.enabled === false } : r)));
+                  dirty();
+                }}
+              />
               <div className="flex gap-2">
                 <Input
                   value={t.title}
@@ -1032,9 +1121,13 @@ export default function LessonEditor() {
         </Card>
       )}
 
+      {tab !== "sources" && (
+        <SetsPanel lessonId={lessonId} picked={picked} onClear={() => setPicked([])} disabled={!!busy} />
+      )}
+
       <div className="flex gap-3 sticky bottom-20 md:bottom-4 z-10">
         {tab === "sources" && pending > 0 ? (
-          <Button size="lg" variant="sun" className="flex-1 shadow-lg" onClick={createFromSources} disabled={working}>
+          <Button size="lg" variant="sun" className="flex-1 shadow-lg" onClick={() => createFromSources()} disabled={working}>
             <Wand2 className="size-5" /> Vytvoriť cvičenia ({pending})
           </Button>
         ) : (

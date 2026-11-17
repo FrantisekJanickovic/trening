@@ -58,6 +58,8 @@ export type VocabItem = {
   id: string;
   /** krátky kód položky; rodič sa naň odvoláva v prompte pre AI */
   code?: string | null;
+  /** vypnutá položka zostáva uložená, ale do tréningu sa nedostane */
+  enabled?: boolean;
   lesson_id: string;
   en: string;
   sk: string;
@@ -72,6 +74,8 @@ export type GrammarItem = {
   id: string;
   /** krátky kód položky; rodič sa naň odvoláva v prompte pre AI */
   code?: string | null;
+  /** vypnutá položka zostáva uložená, ale do tréningu sa nedostane */
+  enabled?: boolean;
   lesson_id: string;
   prompt: string;
   answer: string;
@@ -91,6 +95,8 @@ export type LessonText = {
   id: string;
   /** krátky kód položky; rodič sa naň odvoláva v prompte pre AI */
   code?: string | null;
+  /** vypnutá položka zostáva uložená, ale do tréningu sa nedostane */
+  enabled?: boolean;
   lesson_id: string;
   title: string | null;
   sentences: Sentence[];
@@ -185,3 +191,14 @@ export type SessionSummary = {
 
 export type ActivityKey =
   "flashcards" | "classic" | "match" | "scramble" | "dictation" | "speed" | "shadowing" | "grammar" | "writing" | "reading" | "listening";
+
+/** Pomenovaný výber položiek jednej lekcie — dieťa ho dostane ako samostatný dril. */
+export type SetItem = { kind: "vocab" | "grammar" | "text"; id: string };
+export type EnSet = {
+  id: string;
+  lesson_id: string;
+  name: string;
+  items: SetItem[];
+  active: boolean;
+  created_at: string;
+};

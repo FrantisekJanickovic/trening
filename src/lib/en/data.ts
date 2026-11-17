@@ -1,7 +1,7 @@
 "use client";
 
 import { supabase } from "@/lib/supabase";
-import type { Child, GrammarItem, ItemProgress, Lesson, LessonText, ProblemItem, TextUse, VocabItem } from "./types";
+import type { Child, EnSet, GrammarItem, ItemProgress, Lesson, LessonText, ProblemItem, SetItem, TextUse, VocabItem } from "./types";
 
 export async function listChildren(): Promise<Child[]> {
   const { data, error } = await supabase().from("children").select("*").order("created_at");
@@ -44,6 +44,9 @@ export async function listLessons(): Promise<LessonWithCounts[]> {
 }
 
 export type LessonContent = { vocab: VocabItem[]; grammar: GrammarItem[]; texts: LessonText[] };
+
+/** Vypnuté položky do tréningu nejdú; v editore ich rodič stále vidí. */
+export const onlyEnabled = <T extends { enabled?: boolean }>(rows: T[]) => rows.filter((r) => r.enabled !== false);
 
 export async function loadContent(lessonIds: string[]): Promise<LessonContent> {
   if (!lessonIds.length) return { vocab: [], grammar: [], texts: [] };
@@ -109,4 +112,32 @@ export function todayISO() {
 export async function countLessons(): Promise<number> {
   const { count } = await supabase().from("lessons").select("id", { count: "exact", head: true });
   return count ?? 0;
+}
+
+/** Sady lekcií — pomenované výbery položiek, ktoré dieťa dostane ako dril. */
+export async function loadSets(lessonIds: string[], onlyActive = false): Promise<EnSet[]> {
+  if (!lessonIds.length) return [];
+  let q = supabase().from("en_sets").select("*").in("lesson_id", lessonIds).order("created_at", { ascending: false }).limit(100);
+  if (onlyActive) q = q.eq("active", true);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as EnSet[];
+}
+
+export async function loadSet(id: string): Promise<EnSet | null> {
+  const { data } = await supabase().from("en_sets").select("*").eq("id", id).maybeSingle();
+  return (data as EnSet | null) ?? null;
+}
+
+/** Obsah lekcie zúžený na položky jednej sady, v poradí, v akom sú v lekcii. */
+export function contentOfSet(content: LessonContent, set: EnSet): LessonContent {
+  const want = (kind: SetItem["kind"]) => new Set(set.items.filter((i) => i.kind === kind).map((i) => i.id));
+  const v = want("vocab");
+  const g = want("grammar");
+  const t = want("text");
+  return {
+    vocab: content.vocab.filter((x) => v.has(x.id)),
+    grammar: content.grammar.filter((x) => g.has(x.id)),
+    texts: content.texts.filter((x) => t.has(x.id)),
+  };
 }

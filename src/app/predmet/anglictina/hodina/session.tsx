@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Check, X } from "lucide-react";
+import { ArrowLeft, Check, Play, Target, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -22,14 +22,27 @@ import { buildPlan, phrasesOf, stepKeys, type Plan, type PlanInput } from "@/com
 import Summary, { type SummaryData } from "@/components/en/session/Summary";
 import { Button, Card, cx, Spinner } from "@/components/ui";
 import { loadConfig } from "@/lib/en/config";
-import { getChild, listLessons, loadContent, loadProblems, loadProgress, loadReviewItems, todayISO, type LessonWithCounts } from "@/lib/en/data";
+import {
+  contentOfSet,
+  getChild,
+  listLessons,
+  loadContent,
+  loadProblems,
+  loadProgress,
+  loadReviewItems,
+  loadSet,
+  loadSets,
+  onlyEnabled,
+  todayISO,
+  type LessonWithCounts,
+} from "@/lib/en/data";
 import { phrases } from "@/lib/en/phrases";
 import { itemKey, orderLessons, pickReview, previousLessonIds, problemUpdates } from "@/lib/en/problems";
 import { activityHelp, activityLabel, GRADES, gradeLabel, mergeSettings } from "@/lib/en/settings";
 import { prefetch, speak, stopSpeaking, unlockAudio } from "@/lib/en/speech";
 import { supabase } from "@/lib/supabase";
 import { nowMs } from "@/lib/en/text";
-import type { Child, ChildSettings, GlobalConfig, ItemProgress, ProblemItem } from "@/lib/en/types";
+import type { Child, ChildSettings, EnSet, GlobalConfig, ItemProgress, ProblemItem } from "@/lib/en/types";
 
 type Saved = { grade?: number; lessons?: Record<string, string[]> };
 const STORE = (id: string) => `anglictina.trening.${id}`;
@@ -55,12 +68,16 @@ export default function SessionPage() {
   const params = useSearchParams();
   const childId = params.get("dieta") ?? "";
   const reviewMode = params.get("rezim") === "chyby";
+  // dril z pomenovanej sady, ktorú pripravil rodič
+  const setId = params.get("sada") ?? "";
   const router = useRouter();
 
   const [child, setChild] = useState<Child | null>(null);
   const [lessons, setLessons] = useState<LessonWithCounts[]>([]);
   const [progress, setProgress] = useState<Map<string, ItemProgress>>(new Map());
   const [openProblems, setOpenProblems] = useState(0);
+  // pomenované drily, ktoré rodič pripravil k vybraným lekciám
+  const [sets, setSets] = useState<EnSet[]>([]);
   const [grade, setGrade] = useState<number | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [guide, setGuide] = useState<GuideId>("female");
@@ -72,6 +89,13 @@ export default function SessionPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [summary, setSummary] = useState<SummaryData | null>(null);
+
+  useEffect(() => {
+    if (!selected.length) return setSets([]);
+    loadSets(selected, true)
+      .then(setSets)
+      .catch(() => setSets([]));
+  }, [selected]);
   const [error, setError] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState(0);
   const playRun = useRef(0);
@@ -163,6 +187,20 @@ export default function SessionPage() {
           progress,
           lessonTitles: ["Opakovanie chýb"],
         };
+      } else if (setId) {
+        const set = await loadSet(setId);
+        if (!set) throw new Error("Sada sa nenašla, možno ju rodič zmazal.");
+        const content = contentOfSet(await loadContent([set.lesson_id]), set);
+        problems = await loadProblems(child.id, { lessonIds: [set.lesson_id] });
+        input = {
+          vocab: onlyEnabled(content.vocab),
+          grammar: onlyEnabled(content.grammar),
+          texts: onlyEnabled(content.texts),
+          review: { vocab: [], grammar: [], sentences: [] },
+          settings: { ...settings, wordsPerSession: 0 },
+          progress,
+          lessonTitles: [set.name],
+        };
       } else {
         const prev = config.reviewPrevious ? previousLessonIds(lessons, selected, config.previousLessons) : [];
         const [content, all] = await Promise.all([loadContent(selected), loadProblems(child.id, { lessonIds: [...selected, ...prev] })]);
@@ -174,7 +212,9 @@ export default function SessionPage() {
           ),
         );
         input = {
-          ...content,
+          vocab: onlyEnabled(content.vocab),
+          grammar: onlyEnabled(content.grammar),
+          texts: onlyEnabled(content.texts),
           review,
           settings,
           progress,
@@ -352,6 +392,28 @@ export default function SessionPage() {
                   })}
                 </div>
               )}
+            </section>
+          )}
+
+          {sets.length > 0 && (
+            <section aria-labelledby="sets-h">
+              <h2 id="sets-h" className="text-lg font-black mb-1 flex items-center gap-2">
+                <Target className="size-5 text-sun-deep" /> Pripravené drily
+              </h2>
+              <p className="text-sm text-slate font-semibold mb-2">Kratší tréning presne na to, čo sa skúša.</p>
+              <div className="space-y-2">
+                {sets.map((x) => (
+                  <div key={x.id} className="rounded-2xl border-2 border-line p-3 flex flex-wrap items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-black truncate">{x.name}</p>
+                      <p className="text-sm text-slate font-semibold">{x.items.length} položiek</p>
+                    </div>
+                    <Button variant="sun" onClick={() => router.push(`/predmet/anglictina/hodina?dieta=${childId}&sada=${x.id}`)}>
+                      <Play className="size-4" /> Spustiť
+                    </Button>
+                  </div>
+                ))}
+              </div>
             </section>
           )}
         </>

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Camera, Check, Loader2, RotateCcw } from "lucide-react";
+import { AlertCircle, Camera, Check, Loader2, RotateCcw, Wand2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { TypeTags } from "@/components/en/type-tags";
 import PromptBox from "@/components/prompt-box";
@@ -190,6 +190,8 @@ export function SourceCard({
   onTypes,
   note,
   onNote,
+  onBuild,
+  building,
   ai,
 }: {
   src: LessonSource;
@@ -200,11 +202,15 @@ export function SourceCard({
   /** vlastný pokyn rodiča, ktorý ide do AI spolu s týmto cvičením */
   note?: string;
   onNote?: (v: string) => void;
+  /** vyrobí cvičenia len z tohto zadania, aj s pokynom vyššie */
+  onBuild?: () => void;
+  building?: boolean;
   ai?: boolean;
 }) {
   const st = sourceStatus(src);
   const label = src.label || "Cvičenie";
   const changedFromAi = src.suggested.length > 0 && !sameSet(src.types, src.suggested);
+  const hasTypes = src.types.length > 0 && !src.types.includes("skip");
   return (
     <Card
       className={cx(
@@ -239,9 +245,18 @@ export function SourceCard({
           onChange={onNote}
           disabled={disabled || !ai}
           label={`Pokyn pre AI k cvičeniu ${label}`}
-          hint="Nepovinné. Použije sa pri vytváraní cvičení z tohto zadania."
           placeholder="napr. ber len slová z obrázkov"
         />
+      )}
+      {onBuild && hasTypes && (
+        <div className="space-y-1">
+          <Button variant="sun" size="sm" onClick={onBuild} loading={building} disabled={disabled || !ai}>
+            <Wand2 className="size-4" /> Vytvoriť cvičenia z tohto zadania
+          </Button>
+          {st.tone === "done" && (
+            <p className="text-xs text-slate font-semibold">Cvičenia sa prerobia nanovo podľa pokynu vyššie.</p>
+          )}
+        </div>
       )}
       <div>
         <span className="block text-sm font-bold text-ink-soft mb-1.5" id={`types-${src.id}`}>
