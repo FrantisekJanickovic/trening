@@ -27,24 +27,28 @@ type In = {
 export type Revised = { type: ExerciseType; payload: Payload; concept: string; level: number };
 
 /** Prednastavené zámery. Voľný text ich môže spresniť alebo úplne prebiť. */
-const ACTIONS: Record<string, { label: string; rule: string }> = {
+const ACTIONS: Record<string, { label: string; rule: string; makes: "none" | "same" | "other" | "any" }> = {
   gramatika: {
+    makes: "none",
     label: "Skontroluj gramatiku",
     rule: `Oprav v tomto cvičení pravopis, diakritiku, interpunkciu a neobratné vety. Obsah, typ ani správnu odpoveď nemeň. Výsledok daj do "fixed". Nové cvičenia nevyrábaj.`,
   },
   typy: {
+    makes: "other",
     label: "Pridaj ďalšie typy cvičení",
     rule: `Vyrob nové cvičenia na tú istú látku ako predloha, ale INÉHO typu, než je predloha. Vystriedaj čo najviac povolených typov. Predlohu nemeň, "fixed" nechaj prázdne.`,
   },
   variacie: {
+    makes: "same",
     label: "Pridaj viac variácií",
     rule: `Vyrob nové cvičenia ROVNAKÉHO typu ako predloha a na tú istú látku, len s inými otázkami, menami, rokmi či možnosťami. Predlohu nemeň, "fixed" nechaj prázdne.`,
   },
   obrazok: {
+    makes: "none",
     label: "Pridaj obrázok",
     rule: `K predlohe vyber z ponuky obrázkov ten, ktorý k nej sedí, a jeho číslo daj do "figure". Keď nesedí ani jeden, daj 0. Cvičenie inak nemeň a nové nevyrábaj.`,
   },
-  volny: { label: "Vlastný pokyn", rule: `Rob presne to, čo žiada pokyn rodiča.` },
+  volny: { makes: "any", label: "Vlastný pokyn", rule: `Rob presne to, čo žiada pokyn rodiča.` },
 };
 
 const str = (v: unknown, max: number) =>
@@ -53,8 +57,14 @@ const str = (v: unknown, max: number) =>
     .trim()
     .slice(0, max);
 
-const system = (subject: string, grade: number | null, rule: string, types: ExerciseType[], count: number) => {
+const system = (subject: string, grade: number | null, rule: string, makes: ExerciseType[], count: number) => {
   const def = subjectDef(subject);
+  const where =
+    makes.length === 0
+      ? "Nové cvičenia teraz nevyrábaj, nechaj polia s typmi prázdne."
+      : makes.length === 1
+        ? `Nové cvičenia vyrob najviac ${count}, všetky typu ${makes[0]}, a zapíš ich do poľa "${makes[0]}".`
+        : `Nové cvičenia vyrob najviac ${count}, rozdeľ ich medzi typy ${makes.join(", ")} a každé zapíš do poľa podľa jeho typu, napríklad do "${makes[0]}".`;
   return `Upravuješ cvičenia pre žiaka ${grade ? `${grade}. ročníka ` : ""}základnej školy na Slovensku z predmetu ${def?.name ?? subject}.
 
 Dostaneš prepis lekcie, jedno konkrétne cvičenie ako predlohu a pokyn od rodiča.
@@ -62,7 +72,7 @@ Dostaneš prepis lekcie, jedno konkrétne cvičenie ako predlohu a pokyn od rodi
 Čo máš spraviť:
 ${rule}
 
-Keď vyrábaš nové cvičenia, vyrob ich najviac ${count} a rozdeľ ich medzi povolené typy: ${types.join(", ")}.
+${where}
 
 Pravidlá:
 - Všetko iba z prepisu lekcie. Nič si nevymýšľaj a nepoužívaj vedomosti mimo textu.
@@ -106,12 +116,20 @@ export async function POST(req: Request) {
     return Response.json({ error: "Lekcia nemá v galérii žiadne obrázky, z ktorých by sa dalo vyberať." }, { status: 400 });
   }
 
+  // Ktoré typy smie AI pri tejto akcii vyrobiť. Bez toho si protirečí zadanie
+  // („rovnakého typu ako predloha“) a zoznam povolených typov, a AI nevyrobí nič.
+  const others = types.filter((t) => t !== targetType);
+  const makes: ExerciseType[] =
+    action.makes === "none" ? [] : action.makes === "same" ? [targetType] : action.makes === "other" ? (others.length ? others : types) : types;
+
   const properties: Record<string, unknown> = {
     note: { type: "string", description: "jedna veta po slovensky, čo si spravil" },
-    fixed: { ...AI_SCHEMA[targetType], description: "opravená predloha; vynechaj, keď sa predloha nemení" },
-    figure: { type: "integer", description: "číslo obrázka z ponuky, ktorý patrí k predlohe; 0 = žiadny" },
   };
-  for (const t of types) properties[t] = { type: "array", items: AI_SCHEMA[t], description: `nové cvičenia typu ${t}` };
+  if (action.makes !== "same" && action.makes !== "other") {
+    properties.fixed = { ...AI_SCHEMA[targetType], description: "opravená predloha; vynechaj, keď sa predloha nemení" };
+  }
+  if (figures.length) properties.figure = { type: "integer", description: "číslo obrázka z ponuky, ktorý patrí k predlohe; 0 = žiadny" };
+  for (const t of makes) properties[t] = { type: "array", items: AI_SCHEMA[t], description: `nové cvičenia typu ${t}` };
 
   const prompt = [
     `Lekcia: ${str(body?.title, 160)}`,
@@ -141,7 +159,7 @@ export async function POST(req: Request) {
 
   try {
     const raw = await structured<Record<string, unknown>>({
-      system: system(String(body?.subject ?? ""), grade, action.rule, types, count),
+      system: system(String(body?.subject ?? ""), grade, action.rule, makes, count),
       prompt,
       toolName: "save_revision",
       description: "Save the revised and newly created exercises",
@@ -150,18 +168,25 @@ export async function POST(req: Request) {
     });
 
     const added: Revised[] = [];
+    let dropped = 0;
     for (const { key } of TYPES) {
-      if (!types.includes(key)) continue;
+      if (!makes.includes(key)) continue;
       for (const item of Array.isArray(raw[key]) ? (raw[key] as Record<string, unknown>[]) : []) {
         if (added.length >= count) break;
         const payload = cleanPayload(key, item);
-        if (!payload) continue;
+        // nekompletné cvičenie by sa v appke nedalo hrať; rodičovi aspoň povieme, že prišlo
+        if (!payload) {
+          dropped++;
+          continue;
+        }
         const level = Number(item.level);
         added.push({ type: key, payload, concept: str(item.concept, 80), level: level >= 1 && level <= 3 ? level : 1 });
       }
     }
 
-    const fixedPayload = raw.fixed ? cleanPayload(targetType, raw.fixed) : null;
+    // pri „pridaj variácie / ďalšie typy“ sa predloha nemení, aj keby ju AI poslala
+    const mayFix = action.makes !== "same" && action.makes !== "other";
+    const fixedPayload = mayFix && raw.fixed ? cleanPayload(targetType, raw.fixed) : null;
     const fi = Number(raw.figure);
     const figure = Number.isInteger(fi) && fi >= 1 && fi <= figures.length ? figures[fi - 1].id : null;
 
@@ -169,6 +194,7 @@ export async function POST(req: Request) {
       note: str(raw.note, 300) || "Hotovo.",
       fixed: fixedPayload ? { payload: fixedPayload, concept: str((raw.fixed as Record<string, unknown>).concept, 80) } : null,
       added,
+      dropped,
       figure,
     });
   } catch (e) {

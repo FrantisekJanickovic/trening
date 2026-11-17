@@ -83,8 +83,10 @@ export default function AiPanel({ kind, code, label, ai, disabled, target, grade
         onAdd(r.items);
         parts.push(`pridaných ${r.items.length}`);
       }
+      if (r.dropped) parts.push(`${r.dropped} neúplných som zahodil`);
       setText("");
-      setNote(`${r.note}${parts.length ? ` (${parts.join(", ")})` : ""}`);
+      // keď sa nič nezmenilo, nech to rodič vidí a nespolieha sa na vetu od AI
+      setNote(parts.length ? `${r.note} (${parts.join(", ")})` : `${r.note} — v lekcii sa nič nezmenilo, skús pokyn napísať inak.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Pokyn sa nepodarilo spracovať.");
     } finally {

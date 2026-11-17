@@ -408,6 +408,15 @@ export default function LessonEditor() {
     if (failed?.error) throw failed.error;
     setDeleted(noDeleted);
     setSaved(true);
+
+    // Neúplný riadok sa neuloží — rodič má vedieť, že o niečo prišiel,
+    // inak to vyzerá, že sa uložilo všetko a položka po otvorení chýba.
+    const skipped = [
+      [snap.vocab.filter((r) => r.en.trim() || r.sk.trim()).length - v.length, "slovíčko bez angličtiny alebo prekladu"],
+      [snap.grammar.filter((r) => r.prompt.trim() || r.answer.trim()).length - g.length, "gramatické cvičenie bez vety alebo odpovede"],
+    ] as const;
+    const miss = skipped.filter(([n]) => n > 0).map(([n, what]) => `${n}× ${what}`);
+    if (miss.length) setError(`Uložené, ale neuložilo sa: ${miss.join(", ")}. Doplň chýbajúce políčka a ulož znova.`);
     return id;
   }
 

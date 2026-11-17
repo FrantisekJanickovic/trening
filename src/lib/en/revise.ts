@@ -64,4 +64,4 @@ export type VocabOut = { en: string; sk: string; example_en: string; example_sk:
 export type GrammarOut = { prompt: string; answer: string; options: string[]; translation_sk: string; explanation_sk: string };
 export type TextOut = { title: string; sentences: { en: string; sk: string }[] };
 
-export type Revision = { note: string; fixed: Record<string, unknown> | null; items: Record<string, unknown>[] };
+export type Revision = { note: string; fixed: Record<string, unknown> | null; items: Record<string, unknown>[]; dropped?: number };

@@ -36,6 +36,37 @@ const textSchema = {
 };
 
 const SCHEMA_OF: Record<ItemKind, object> = { vocab: vocabSchema, grammar: grammarSchema, text: textSchema };
+
+const filled = (v: unknown) => typeof v === "string" && v.trim().length > 0;
+const re = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Nová položka od AI. Občas pomenuje polia inak alebo pri gramatike zabudne
+ * na medzeru — čo sa dá, opravíme, zvyšok zahodíme, nech sa do editora
+ * nedostane prázdny riadok, ktorý by sa pri ukladaní beztak stratil.
+ */
+function cleanItem(kind: ItemKind, raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = { ...(raw as Record<string, unknown>) };
+  if (kind === "vocab") {
+    r.en = r.en ?? r.english ?? r.word;
+    r.sk = r.sk ?? r.slovak ?? r.translation_sk;
+    return filled(r.en) && filled(r.sk) ? r : null;
+  }
+  if (kind === "grammar") {
+    r.prompt = r.prompt ?? r.sentence ?? r.text ?? r.question;
+    const answer = filled(r.answer) ? String(r.answer).split("|")[0].trim() : "";
+    // veta bez medzery sa hrať nedá; keď je odpoveď v nej, vyrežeme ju
+    if (filled(r.prompt) && !String(r.prompt).includes("___") && answer) {
+      const rx = new RegExp(`\\b${re(answer)}\\b`, "i");
+      if (rx.test(String(r.prompt))) r.prompt = String(r.prompt).replace(rx, "___");
+    }
+    return filled(r.prompt) && String(r.prompt).includes("___") && filled(r.answer) ? r : null;
+  }
+  const sentences = arr<Record<string, unknown>>(r.sentences).filter((x) => filled(x.en));
+  r.sentences = sentences;
+  return sentences.length ? r : null;
+}
 const KIND_NAME: Record<ItemKind, string> = { vocab: "vocabulary item", grammar: "grammar gap-fill exercise", text: "reading text" };
 
 export async function POST(req: Request) {
@@ -98,10 +129,14 @@ Rules:
       content: [{ type: "text", text: prompt }],
     });
 
+    const sent = arr<Record<string, unknown>>(raw.items).slice(0, count);
+    const items = sent.map((x) => cleanItem(kind, x)).filter((x): x is Record<string, unknown> => !!x);
     return Response.json({
       note: s(raw.note, 300) || "Hotovo.",
       fixed: raw.fixed && typeof raw.fixed === "object" ? raw.fixed : null,
-      items: arr<Record<string, unknown>>(raw.items).slice(0, count),
+      items,
+      // koľko položiek AI poslala nepoužiteľných — rodič má vedieť, že tam niečo bolo
+      dropped: sent.length - items.length,
     });
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message : "AI zlyhala." }, { status: 502 });

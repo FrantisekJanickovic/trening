@@ -186,10 +186,11 @@ export default function ExercisesTab({ lesson, slug, sources, exercises, config,
         if (error) throw new Error(error.message);
         parts.push(`pridaných ${rows.length} nových cvičení`);
       }
+      if (r.dropped) parts.push(`${r.dropped} neúplných som zahodil`);
       await reload();
       setPromptText("");
-      if (!parts.length) setPromptFor(null);
-      setInfo(`${r.note}${parts.length ? ` (${parts.join(", ")})` : ""}`);
+      // keď sa naozaj nič nestalo, nespoliehame sa na vetu od AI a povieme to
+      setInfo(parts.length ? `${r.note} (${parts.join(", ")})` : `${r.note} — v lekcii sa nič nezmenilo, skús pokyn napísať inak.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Pokyn sa nepodarilo spracovať.");
     } finally {

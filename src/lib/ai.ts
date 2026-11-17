@@ -85,7 +85,7 @@ export const generateExercises = (input: {
 }) => post<{ exercises: Generated[] }>("/api/ai/exercises", input);
 
 export type Revised = { type: ExerciseType; payload: Payload; concept: string; level: number };
-export type Revision = { note: string; fixed: { payload: Payload; concept: string } | null; added: Revised[]; figure: string | null };
+export type Revision = { note: string; fixed: { payload: Payload; concept: string } | null; added: Revised[]; dropped?: number; figure: string | null };
 
 /** Pokyn rodiča v kontexte jedného cvičenia: oprava, nové typy, variácie alebo obrázok. */
 export const reviseExercise = (input: {
