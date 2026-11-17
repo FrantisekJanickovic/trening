@@ -187,6 +187,9 @@ export async function POST(req: Request) {
     // pri „pridaj variácie / ďalšie typy“ sa predloha nemení, aj keby ju AI poslala
     const mayFix = action.makes !== "same" && action.makes !== "other";
     const fixedPayload = mayFix && raw.fixed ? cleanPayload(targetType, raw.fixed) : null;
+    console.log(
+      `[ai/revise] action=${body?.action ?? "volny"} target=${targetType} makes=${makes.join("+") || "-"} keys=${Object.keys(raw).join("|")} added=${added.length} dropped=${dropped} fixed=${!!fixedPayload} note=${str(raw.note, 120)}`,
+    );
     const fi = Number(raw.figure);
     const figure = Number.isInteger(fi) && fi >= 1 && fi <= figures.length ? figures[fi - 1].id : null;
 

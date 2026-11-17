@@ -131,6 +131,10 @@ Rules:
 
     const sent = arr<Record<string, unknown>>(raw.items).slice(0, count);
     const items = sent.map((x) => cleanItem(kind, x)).filter((x): x is Record<string, unknown> => !!x);
+    // do logu Vercelu, nech sa dá dohľadať, prečo sa nič nepridalo
+    console.log(
+      `[en/revise] action=${body?.action ?? "volny"} kind=${kind} keys=${Object.keys(raw).join("|")} sent=${sent.length} kept=${items.length} fixed=${!!raw.fixed} note=${s(raw.note, 120)}`,
+    );
     return Response.json({
       note: s(raw.note, 300) || "Hotovo.",
       fixed: raw.fixed && typeof raw.fixed === "object" ? raw.fixed : null,

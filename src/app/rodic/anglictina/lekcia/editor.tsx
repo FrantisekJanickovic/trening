@@ -416,7 +416,25 @@ export default function LessonEditor() {
       [snap.grammar.filter((r) => r.prompt.trim() || r.answer.trim()).length - g.length, "gramatické cvičenie bez vety alebo odpovede"],
     ] as const;
     const miss = skipped.filter(([n]) => n > 0).map(([n, what]) => `${n}× ${what}`);
-    if (miss.length) setError(`Uložené, ale neuložilo sa: ${miss.join(", ")}. Doplň chýbajúce políčka a ulož znova.`);
+
+    // Kontrola po uložení: čo je naozaj v databáze. Bez nej sa tichá chyba
+    // zápisu prejaví až tým, že po znovuotvorení lekcie položka chýba.
+    const counts = await Promise.all([
+      sb.from("vocab_items").select("id", { count: "exact", head: true }).eq("lesson_id", id),
+      sb.from("grammar_items").select("id", { count: "exact", head: true }).eq("lesson_id", id),
+      sb.from("lesson_texts").select("id", { count: "exact", head: true }).eq("lesson_id", id),
+    ]);
+    const want = [v.length, g.length, t.length];
+    const names = ["slovíčok", "gramatických cvičení", "textov"];
+    const short = counts
+      .map((c, i) => ({ i, got: c.count ?? null }))
+      .filter((x) => x.got !== null && x.got < want[x.i])
+      .map((x) => `${names[x.i]} ${x.got} z ${want[x.i]}`);
+    if (short.length) {
+      setError(`Pozor, v databáze je menej položiek, než sa posielalo: ${short.join(", ")}. Daj mi vedieť, pozriem sa na to.`);
+    } else if (miss.length) {
+      setError(`Uložené, ale neuložilo sa: ${miss.join(", ")}. Doplň chýbajúce políčka a ulož znova.`);
+    }
     return id;
   }
 
